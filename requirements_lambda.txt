@@ -1,8 +1,10 @@
+awswrangler==3.5.2
+
 numpy==1.26.0
 pandas==2.0.2
 scikit-learn==1.3.0
 optuna==3.5.0
 
-geopandas==0.14.2 # install via conda in Dockerfile to get GDAL working properly
+# geopandas==0.14.2 # install via conda in Dockerfile to get GDAL working properly
 shapely==2.0.1
 pyarrow==13.0.0 # needed by geopandas for saving .parquet

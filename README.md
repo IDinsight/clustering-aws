@@ -2,9 +2,56 @@
 
 This repo holds the code for running the latest optimised-k-means clustering algorithm (derived from the `gridsample` repo on 9th Feb 2024) on AWS Lambda for the HPLS project (round 3).
 
-To do:
+## Docker
+
+Write your Dockerfile with these [AWS docs](https://docs.aws.amazon.com/lambda/latest/dg/python-image.html#python-image-clients) in mind.
+
+Build with:
+
+    docker build --platform linux/amd64 -t hpls-r3-kmeans:latest .
+
+Prepare for emulating Lambdas locally:
+
+    mkdir -p ~/.aws-lambda-rie && \
+    curl -Lo ~/.aws-lambda-rie/aws-lambda-rie https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie && \
+    chmod +x ~/.aws-lambda-rie/aws-lambda-rie
+
+Run locally with:
+
+    docker run --platform linux/amd64 -d -v ~/.aws-lambda-rie:/aws-lambda -p 9000:8080 \
+    --entrypoint /aws-lambda/aws-lambda-rie \
+    hpls-r3-kmeans:latest \
+    /opt/conda/bin/python -m awslambdaric app.handler
+
+Note: If you want to actually access the S3 buckets, set the following in a .env file and load it with the `--env-file .env` flag when running `docker run`:
+
+    AWS_ACCESS_KEY_ID=
+    AWS_SECRET_ACCESS_KEY=
+
+Test locally with:
+
+    curl "http://localhost:9000/2015-03-31/functions/function/invocations" -d '{"filename":"data.parquet"}'
+
+## Docker push to ECR instructions
+
+Example - ECR repo URL is 865894278225.dkr.ecr.ap-south-1.amazonaws.com.
+
+Tag the image with:
+
+    docker tag hpls-r3-kmeans:latest 865894278225.dkr.ecr.ap-south-1.amazonaws.com/hpls-r3-kmeans:latest
+
+Login with:
+
+    aws ecr get-login-password --region ap-south-1 --profile <YOUR-AWS-PROFILE> | docker login --username AWS --password-stdin 865894278225.dkr.ecr.ap-south-1.amazonaws.com
+
+Push to ECR with:
+
+    docker push 865894278225.dkr.ecr.ap-south-1.amazonaws.com/hpls-r3-kmeans:latest
+
+## To do
 
 - Clean up and flesh out.
+- Add reasoning why we use a miniconda Docker image base and add Lambda functionality on top (and not an official Lambda image)
 - Move all clustering-related code here and keep `gridsample` for data processing and pipeline code.
 
 Contact: Amir Emami (@amiraliemami)

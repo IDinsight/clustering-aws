@@ -1,8 +1,6 @@
 from typing import Optional
 
 import geopandas as gpd
-import matplotlib.pyplot as plt
-import pandas as pd
 
 
 def get_cluster_pivot_gdf(
@@ -11,7 +9,7 @@ def get_cluster_pivot_gdf(
     cols_to_keep: Optional[list[str]] = None,
     with_stats: bool = True,
     epsg: int = 26191,  # for morocco
-) -> pd.DataFrame:
+):
     """
     Returns a pivot table of the gdf_w_clusters with the cluster_id.
 
@@ -61,51 +59,3 @@ def get_cluster_pivot_gdf(
         cluster_pivot_gdf["area_km^2"] = cluster_pivot_gdf["geometry"].area / 10**6
 
     return cluster_pivot_gdf
-
-
-def plot_weights_vs_radii(
-    cluster_pivot_gdf=None,
-    df_w_clusters=None,
-    weight_col="weight",
-    epsg=26191,
-    y_human_readable="Rooftops",
-):
-    """
-    Plots the number of grids per cluster and the cluster radius.
-
-    Parameters
-    ----------
-    cluster_pivot_gdf : pivoted dataframe containing cluster geometries and weights
-        (as per get_cluster_pivot_gdf). Either provide this or the unpivoted gdf_w_clusters
-    gdf_w_clusters : dataframe containing GPS coordinates, grid IDs and weights.
-    weight_col : name of the column containing the weights each point
-        (e.g. population).
-    epsg : EPSG code for the coordinate reference system to use. Default is 26191 (morocco).
-    y_human_readable : human-readable name of the weight column. Default is "Rooftops".
-
-    Returns
-    -------
-    ax : matplotlib axis object.
-    """
-
-    if cluster_pivot_gdf is None:
-        # stats that depend on cluster geometries need pivot
-        cluster_pivot_gdf = get_cluster_pivot_gdf(
-            gdf_w_clusters=df_w_clusters,
-            weight_col=weight_col,
-            with_stats=True,
-            epsg=epsg,
-        )
-
-    # plot
-    fig, ax = plt.subplots(figsize=(5, 5))
-    ax.scatter(
-        cluster_pivot_gdf["minimum_bounding_radius"],
-        cluster_pivot_gdf["cluster_weight"],
-        alpha=0.5,
-    )
-    ax.set_xlabel("Cluster radius (m)")
-    ax.set_ylabel(f"Cluster weight ({y_human_readable})")
-    ax.set_title(f"Cluster weight ({y_human_readable}) vs. cluster radius")
-    plt.tight_layout()
-    return ax

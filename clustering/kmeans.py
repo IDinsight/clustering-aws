@@ -14,6 +14,7 @@ from .reporting import get_cluster_pivot_gdf
 from .utils import create_ids
 
 
+# Use for local or EC2 instance
 def parallel_kmeans_secondpass(
     gdf_w_clusters: gpd.GeoDataFrame,
     oversized_cluster_ids: list[str],
@@ -68,52 +69,52 @@ def parallel_kmeans_secondpass(
     return gdf_w_clusters_doublepass
 
 
-# LEGACY
-# def kmeans_secondpass(
-#     gdf_w_clusters: gpd.GeoDataFrame,
-#     oversized_cluster_ids: list[str],
-#     desired_cluster_weight: Union[float, int],
-#     desired_cluster_radius: Union[float, int],
-#     id_col: str = "rooftop_id",
-#     lat_col: str = "Lat_centroid",
-#     lon_col: str = "Lon_centroid",
-#     weight_col: Optional[str] = None,
-#     weight_importance_factor: Union[float, int] = 1,
-#     epsg: int = 26191,  # for morocco
-#     n_trials: int = 100,
-#     n_jobs: int = -1,
-# ) -> gpd.GeoDataFrame:
+# Use for AWS Lambda
+def kmeans_secondpass(
+    gdf_w_clusters: gpd.GeoDataFrame,
+    oversized_cluster_ids: list[str],
+    desired_cluster_weight: Union[float, int],
+    desired_cluster_radius: Union[float, int],
+    id_col: str = "rooftop_id",
+    lat_col: str = "Lat_centroid",
+    lon_col: str = "Lon_centroid",
+    weight_col: Optional[str] = None,
+    weight_importance_factor: Union[float, int] = 1,
+    epsg: int = 26191,  # for morocco
+    n_trials: int = 100,
+    n_jobs: int = -1,
+) -> gpd.GeoDataFrame:
 
-#     # make a copy of the gdf
-#     gdf_w_clusters_doublepass = gdf_w_clusters.copy()
+    # make a copy of the gdf
+    gdf_w_clusters_doublepass = gdf_w_clusters.copy()
 
-#     # rerun optimisation for each cluster that is oversized to split it up into smaller ones.
-#     for cluster_id in tqdm(oversized_cluster_ids):
-#         # subset data
-#         oversized_cluster = recluster(
-#             cluster_id=cluster_id,
-#             gdf_w_clusters=gdf_w_clusters,
-#             desired_cluster_weight=desired_cluster_weight,
-#             desired_cluster_radius=desired_cluster_radius,
-#             id_col=id_col,
-#             lat_col=lat_col,
-#             lon_col=lon_col,
-#             weight_col=weight_col,
-#             weight_importance_factor=weight_importance_factor,
-#             epsg=epsg,
-#             n_trials=n_trials,
-#             n_jobs=n_jobs,
-#         )
+    # rerun optimisation for each cluster that is oversized to split it up into smaller ones.
+    for cluster_id in oversized_cluster_ids:
+        # subset data
+        oversized_cluster = recluster(
+            cluster_id=cluster_id,
+            gdf_w_clusters=gdf_w_clusters,
+            desired_cluster_weight=desired_cluster_weight,
+            desired_cluster_radius=desired_cluster_radius,
+            id_col=id_col,
+            lat_col=lat_col,
+            lon_col=lon_col,
+            weight_col=weight_col,
+            weight_importance_factor=weight_importance_factor,
+            epsg=epsg,
+            n_trials=n_trials,
+            n_jobs=n_jobs,
+        )
 
-#         # replace the cluster_id of the oversized cluster with the new subclusters
-#         gdf_w_clusters_doublepass = gdf_w_clusters_doublepass[
-#             gdf_w_clusters_doublepass["cluster_id"] != cluster_id
-#         ]
-#         gdf_w_clusters_doublepass = pd.concat(
-#             [gdf_w_clusters_doublepass, oversized_cluster]
-#         )
+        # replace the cluster_id of the oversized cluster with the new subclusters
+        gdf_w_clusters_doublepass = gdf_w_clusters_doublepass[
+            gdf_w_clusters_doublepass["cluster_id"] != cluster_id
+        ]
+        gdf_w_clusters_doublepass = pd.concat(
+            [gdf_w_clusters_doublepass, oversized_cluster]
+        )
 
-#     return gdf_w_clusters_doublepass
+    return gdf_w_clusters_doublepass
 
 
 def get_oversized_clusters(

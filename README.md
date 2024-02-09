@@ -48,6 +48,20 @@ Push to ECR with:
 
     docker push 865894278225.dkr.ecr.ap-south-1.amazonaws.com/hpls-r3-kmeans:latest
 
+## AWS Lambda Performance
+
+Example stats:
+
+    | Grids     | Duration     | Billed Duration  | Max Memory Used |
+    |-----------|--------------|------------------|-----------------|
+    | 13691     | 8,547.17 ms  | 16,270 ms*       | 422 MB          | 
+    | 69226     | 98,398.83 ms | 98,399 ms        | 518 MB          |
+    | 101519    | 35,207.47 ms | 42,906 ms*       | 568 MB          | 
+    | ^largest  |              |                  |                 |
+*Roughly 7-second initialisation time included in billed duration
+
+Based on this, I set the memory to 1024MB and timeout to 5mins.
+
 ## To do
 
 - Clean up and flesh out.

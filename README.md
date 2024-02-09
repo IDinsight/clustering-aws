@@ -44,6 +44,8 @@ Login with:
 
     aws ecr get-login-password --region ap-south-1 --profile <YOUR-AWS-PROFILE> | docker login --username AWS --password-stdin 865894278225.dkr.ecr.ap-south-1.amazonaws.com
 
+Note - follow these [docs](https://docs.aws.amazon.com/cli/latest/userguide/sso-configure-profile-token.html) if you're not authenticated or run into issues here or in the next step.
+
 Push to ECR with:
 
     docker push 865894278225.dkr.ecr.ap-south-1.amazonaws.com/hpls-r3-kmeans:latest
@@ -64,7 +66,8 @@ Based on this, I set the memory to 1024MB and timeout to 5mins.
 
 ## To do
 
-- Clean up and flesh out.
+- Clean up
+- Abstact out parameters into the event call instead of hardcoded into `app.py`
 - Add reasoning why we use a miniconda Docker image base and add Lambda functionality on top (and not an official Lambda image)
 - Move all clustering-related code here and keep `gridsample` for data processing and pipeline code.
 

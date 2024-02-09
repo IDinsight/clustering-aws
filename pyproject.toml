@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "clustering"
+description = "Clustering code"
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["grid-based sampling", "surveys", "geospatial"]
+authors = [
+    {name = "IDinsight"}
+]
+dynamic = ["version", "dependencies"]
+
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+version = {attr = "clustering.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["clustering*"]

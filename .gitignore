@@ -1,0 +1,41 @@
+*/data/*
+data
+data_hpls
+
+*cpython*
+*.vscode
+*ne_10m_admin_1_states*
+*secrets*
+*/__pycache__/*
+
+# PyCharm ide files
+.idea
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+*.egg-info
+# dotenv
+.env
+
+# virtualenv
+.venv
+venv/
+ENV/
+
+# MACOS
+.DS_Store
+**/.DS_Store

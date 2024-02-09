@@ -67,7 +67,6 @@ Based on this, I set the memory to 1024MB and timeout to 5mins.
 ## To do
 
 - Clean up
-- Abstact out parameters into the event call instead of hardcoded into `app.py`
 - Add reasoning why we use a miniconda Docker image base and add Lambda functionality on top (and not an official Lambda image)
 - Move all clustering-related code here and keep `gridsample` for data processing and pipeline code.
 

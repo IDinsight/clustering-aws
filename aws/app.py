@@ -1,3 +1,4 @@
+import json
 import time
 from subprocess import call
 import awswrangler as wr
@@ -14,11 +15,6 @@ from clustering.kmeans import (
 # secondpass_python_n_jobs = 1
 # secondpass_optuna_n_jobs = 2
 
-# AWS VARIABLES
-input_bucket = "r3-hpls-presampling-barangays"
-output_bucket = "r3-hpls-clustered-barangays"
-
-# CLUSTERING VARIABLES
 # admin variables
 id_col = "grid_id"
 lat_col = "Lat"
@@ -116,8 +112,11 @@ def download_data(bucket, filename):
 def handler(event, context):
     print(event)
 
-    # Download file from S3
     input_filename = event["filename"]
+    input_bucket = event["input_bucket"]
+    output_bucket = event["output_bucket"]
+
+    # Download file from S3
     output_filename = f"clustered_{input_filename}"
 
     try:
@@ -151,3 +150,8 @@ def handler(event, context):
 
     # clean up because some resources are shared across executions
     call("rm -rf /tmp/*", shell=True)
+
+    return {
+        "statusCode": 200,
+        "body": json.dumps(f"Finished clustering {input_filename}!"),
+    }

@@ -19,23 +19,31 @@ def lambda_handler(event, context):
         x.key.replace("clustered_", "") for x in s3r.Bucket(output_bucket).objects.all()
     )
 
-    remaining_barangays = [{"filename": x.key} for x in source if x.key not in target]
+    payload_list = [
+        {
+            "filename": x.key,
+            "input_bucket": input_bucket,
+            "output_bucket": output_bucket,
+        }
+        for x in source
+        if x.key not in target
+    ]
 
     # batch to less than 7k
-    print(f"Remaining barangays: {len(remaining_barangays)}")
-    remaining_barangays = remaining_barangays[:7000]
+    print(f"Remaining barangays: {len(payload_list)}")
+    remaining_barangays = payload_list[:7000]
 
     # trigger sfn
     response = sfn.start_execution(
         stateMachineArn=step_function_arn,
         input=json.dumps(
             {
-                "filenames": remaining_barangays,
+                "payload": payload_list,
             }
         ),
     )
 
     return {
         "statusCode": 200,
-        "body": json.dumps(f"Kicked off {len(remaining_barangays)} processes..."),
+        "body": json.dumps(f"Kicked off {len(payload_list)} processes..."),
     }

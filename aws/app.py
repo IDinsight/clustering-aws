@@ -30,6 +30,14 @@ secondpass_n_trials = 24
 
 def cluster_data(gdf_for_cluster):
 
+    # stop-gap for dataset with all row weights = 0
+    if gdf_for_cluster[weight_col].sum() == 0:
+        gdf_w_clusters = gdf_for_cluster.copy()
+        gdf_w_clusters.loc[:, "cluster_id"] = "CLUSTER_0"
+        gdf_w_clusters.loc[:, "cluster_weight"] = 0.0
+        gdf_w_clusters.loc[:, "dense_area_guess"] = 0
+        return gdf_w_clusters
+
     # dynamic radius parameter
     if gdf_for_cluster["urban"].iloc[0]:
         desired_radius = 1000

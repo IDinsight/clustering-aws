@@ -209,8 +209,9 @@ def run_optuna_kmeans_study(
         total_weight = gdf[weight_col].sum()
 
     expected_n_clusters = int(total_weight / desired_cluster_weight)
+    n_samples = len(gdf)
     min_n_clusters, max_n_clusters, search_space = get_min_max_search_space(
-        expected_n_clusters
+        expected_n_clusters, n_samples
     )
     study = optuna.create_study(
         sampler=optuna.samplers.GridSampler(search_space, seed=42),
@@ -240,12 +241,18 @@ def run_optuna_kmeans_study(
     return study
 
 
-def get_min_max_search_space(n_clusters: int) -> tuple[int, int, dict[str, list[int]]]:
-    if n_clusters < 2:
-        n_clusters = 2
+def get_min_max_search_space(
+    n_clusters: int, n_samples: int, scale_factor: int = 2
+) -> tuple[int, int, dict[str, list[int]]]:
 
-    min_n_clusters = n_clusters // 2
-    max_n_clusters = n_clusters * 2
+    max_n_clusters = max(n_clusters * scale_factor, scale_factor)
+    if n_samples < max_n_clusters:
+        # KMeans can't have more clusters than samples
+        max_n_clusters = n_samples
+        min_n_clusters = max(1, max_n_clusters // 4)
+    else:
+        min_n_clusters = max(n_clusters // scale_factor, 1)
+
     search_space = {"n_clusters": list(range(min_n_clusters, max_n_clusters + 1))}
 
     return min_n_clusters, max_n_clusters, search_space

@@ -8,7 +8,7 @@ Write your Dockerfile with these [AWS docs](https://docs.aws.amazon.com/lambda/l
 
 Build with:
 
-    docker build --platform linux/amd64 -t hpls-r3-kmeans:latest .
+    docker build -t hpls-r3-kmeans:latest .
 
 Prepare for emulating Lambdas locally:
 
@@ -18,10 +18,10 @@ Prepare for emulating Lambdas locally:
 
 Run locally with:
 
-    docker run --platform linux/amd64 -d -v ~/.aws-lambda-rie:/aws-lambda -p 9000:8080 \
+    docker run --env-file .env -d\
+    -v ~/.aws-lambda-rie:/aws-lambda -p 9000:8080 \
     --entrypoint /aws-lambda/aws-lambda-rie \
-    hpls-r3-kmeans:latest \
-    /opt/conda/bin/python -m awslambdaric app.handler
+    hpls-r3-kmeans:latest /opt/conda/bin/python -m awslambdaric app.handler
 
 Note: If you want to actually access the S3 buckets, set the following in a .env file and load it with the `--env-file .env` flag when running `docker run`:
 
@@ -30,7 +30,8 @@ Note: If you want to actually access the S3 buckets, set the following in a .env
 
 Test locally with:
 
-    curl "http://localhost:9000/2015-03-31/functions/function/invocations" -d '{"filename":"data.parquet", "input_bucket":"...", "output_bucket":"..."}'
+    curl "http://localhost:9000/2015-03-31/functions/function/invocations" \
+    -d '{"filename":"data_200902010.parquet", "input_bucket":"r3-hpls-presampling-barangays",  "output_bucket":"r3-hpls-clustered-barangays"}'
 
 ## Docker push to ECR instructions
 

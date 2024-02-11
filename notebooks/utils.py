@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 from clustering.reporting import get_cluster_pivot_gdf
 
+
 def plot_weights_vs_radii(
     cluster_df: Optional[gpd.GeoDataFrame] = None,
     point_gdf_w_cluster: Optional[gpd.GeoDataFrame] = None,
@@ -73,3 +74,73 @@ def plot_weights_vs_radii(
         plt.savefig(output_filepath, dpi=300)
 
     return g
+
+
+def save_shapefiles(
+    gdf: gpd.GeoDataFrame,
+    folderpath: Path,
+    filename: str = "processed_grids",
+    formats: list[str] = ["parquet", "kml", "geojson", "csv"],
+) -> None:
+    """
+    Save a GeoDataFrame to multiple file formats.
+
+    Parameters
+    ----------
+    gdf : A GeoDataFrame.
+    folderpath : The directory in which to save the files.
+    filename : The name of the file to save, without extensions.
+    formats : A list of file formats to save the GeoDataFrame to. Must be a subset of
+        ["parquet", "kml", "geojson", "csv"].
+
+    Returns
+    -------
+    None
+    """
+
+    # raise error if disallowed formats are passed
+    allowed_formats = ["parquet", "kml", "geojson", "csv"]
+    for format in formats:
+        if format not in allowed_formats:
+            raise ValueError(
+                f"{format} not allowed. formats must be a list containing any of the "
+                f"following: {allowed_formats}"
+            )
+
+    # create output folder if it doesn't exist
+    folderpath.mkdir(parents=True, exist_ok=True)
+
+    # with geometries
+    if "parquet" in formats:
+        gdf.to_parquet(folderpath / f"{filename}.parquet")
+
+    if "kml" in formats:
+        gdf.to_file(folderpath / f"{filename}.kml", driver="KML")
+
+    if "geojson" in formats:
+        gdf.to_file(folderpath / f"{filename}.geojson", driver="GeoJSON")
+
+    # without geometries
+    if "csv" in formats:
+        gdf.drop(columns=["geometry"]).to_csv(folderpath / f"{filename}.csv")
+
+
+def df_w_latlons_to_gdf(
+    df,
+    lat_name: str = "Lat",
+    lon_name: str = "Lon",
+    crs: str = "EPSG:4326",
+):
+    """
+    Convert DataFrame to GeoDataFrame by creating points from lat-lon columns.
+
+    Parameters
+    ----------
+    df : The DataFrame to convert.
+    lat_name, lon_name : The names of the columns containing the latitude and longitude values.
+        Default is 'Lat' and 'Lon'.
+    crs : The coordinate reference system of the lat-lon columns.
+    """
+    latlon_point_geoms = gpd.points_from_xy(x=df[lon_name], y=df[lat_name])
+    gdf = gpd.GeoDataFrame(df.copy(), geometry=latlon_point_geoms, crs=crs)
+    return gdf

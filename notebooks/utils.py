@@ -5,7 +5,7 @@ import geopandas as gpd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from clustering.reporting import get_cluster_pivot_gdf
+from clustering.utils import get_cluster_pivot_gdf
 
 
 def plot_weights_vs_radii(

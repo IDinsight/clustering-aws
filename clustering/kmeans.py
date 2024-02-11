@@ -10,8 +10,7 @@ from sklearn.cluster import KMeans
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-from .reporting import get_cluster_pivot_gdf
-from .utils import create_ids
+from .utils import create_ids, get_cluster_pivot_gdf
 
 
 # Use for local or EC2 instance

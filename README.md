@@ -30,7 +30,7 @@ Note: If you want to actually access the S3 buckets, set the following in a .env
 
 Test locally with:
 
-    curl "http://localhost:9000/2015-03-31/functions/function/invocations" -d '{"filename":"data.parquet"}'
+    curl "http://localhost:9000/2015-03-31/functions/function/invocations" -d '{"filename":"data.parquet", "input_bucket":"...", "output_bucket":"..."}'
 
 ## Docker push to ECR instructions
 
@@ -63,6 +63,10 @@ Example stats:
 *Roughly 7-second initialisation time included in billed duration
 
 Based on this, I set the memory to 1024MB and timeout to 5mins.
+
+## Notes
+
+- Input/output buckets are currently hardcoded into Daddy Lambda's code right now.
 
 ## To do
 

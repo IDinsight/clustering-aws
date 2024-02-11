@@ -29,21 +29,24 @@ def lambda_handler(event, context):
         if x.key not in target
     ]
 
-    # batch to less than 7k
+    # Only send first 10,000 barangays
+    # This is arbitrary - check limits and change 500 limit too maybe !!!!!!!!!!!!!!!!!
     print(f"Remaining barangays: {len(payload_list)}")
-    remaining_barangays = payload_list[:7000]
+    selected_remaining_barangays = payload_list[:10000]
 
     # trigger sfn
     response = sfn.start_execution(
         stateMachineArn=step_function_arn,
         input=json.dumps(
             {
-                "payload": payload_list,
+                "payload": selected_remaining_barangays,
             }
         ),
     )
 
     return {
         "statusCode": 200,
-        "body": json.dumps(f"Kicked off {len(payload_list)} processes..."),
+        "body": json.dumps(
+            f"Kicked off {len(selected_remaining_barangays)} processes..."
+        ),
     }

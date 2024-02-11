@@ -21,9 +21,7 @@ def lambda_handler(event, context):
 
     payload_list = [
         {
-            "filename": x.key,
-            "input_bucket": input_bucket,
-            "output_bucket": output_bucket,
+            "filename": x.key
         }
         for x in source
         if x.key not in target
@@ -32,14 +30,14 @@ def lambda_handler(event, context):
     # Only send first 10,000 barangays
     # This is arbitrary - check limits and change 500 limit too maybe !!!!!!!!!!!!!!!!!
     print(f"Remaining barangays: {len(payload_list)}")
-    selected_remaining_barangays = payload_list[:10000]
+    selected_remaining_barangays = payload_list[:10001]
 
     # trigger sfn
     response = sfn.start_execution(
         stateMachineArn=step_function_arn,
         input=json.dumps(
             {
-                "payload": selected_remaining_barangays,
+                "filenames": selected_remaining_barangays,
             }
         ),
     )

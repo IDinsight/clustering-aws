@@ -67,7 +67,7 @@ Based on this, I set the memory to 1024MB and timeout to 5mins.
 
 ## Notes
 
-- Input/output buckets are currently hardcoded into Daddy Lambda's code right now.
+- Input/output buckets are currently hardcoded into the Step Function inside Parallel Process's Payload editor right now.
 
 ## To do
 

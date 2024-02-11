@@ -125,7 +125,7 @@ def handler(event, context):
             time.sleep(3)
             gdf_for_cluster = download_data(input_bucket, output_filename)
         except Exception as e:
-            raise Exception(e)
+            raise Exception(f"{input_filename} failed. Error: {e}")
 
     # Cluster
     try:
@@ -133,7 +133,7 @@ def handler(event, context):
         gdf_w_clusters = cluster_data(gdf_for_cluster)
         gdf_w_clusters.to_parquet(f"/tmp/{output_filename}")
     except Exception as e:
-        raise Exception(e)
+        raise Exception(f"{input_filename} failed. Error: {e}")
 
     # Upload file to S3
     try:
@@ -143,7 +143,7 @@ def handler(event, context):
             path=f"s3://{output_bucket}/{output_filename}",
         )
     except Exception as e:
-        raise Exception(e)
+        raise Exception(f"{input_filename} failed. Error: {e}")
 
     # clean up because some resources are shared across executions
     call("rm -rf /tmp/*", shell=True)

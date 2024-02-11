@@ -19,33 +19,36 @@ def lambda_handler(event, context):
         x.key.replace("clustered_", "") for x in s3r.Bucket(output_bucket).objects.all()
     )
 
-    filenames = [
-        {
-            "filename": x.key
+    filenames = [{"filename": x.key} for x in source if x.key not in target]
+
+    if len(filenames) == 0:
+        return {
+            "statusCode": 200,
+            "body": json.dumps(
+                f"No unprocessed files remaining. "
+                f"No tasks left to kick off."
+            ),
         }
-        for x in source
-        if x.key not in target
-    ]
 
-    # Only send 7k unprocessed files per run.
-    # We're limited by how big the HTTP request to the state machine can be.
-    print(f"Remaining files: {len(filenames)}")
-    selected_remaining_filenames = filenames[:7000]
+    else:
+        # Send max 7k unprocessed files per run.
+        # We're limited by how big the HTTP request to the state machine can be.
+        selected_remaining_filenames = filenames[:2000]
 
-    # trigger sfn
-    response = sfn.start_execution(
-        stateMachineArn=step_function_arn,
-        input=json.dumps(
-            {
-                "filenames": selected_remaining_filenames,
-            }
-        ),
-    )
+        # trigger sfn
+        response = sfn.start_execution(
+            stateMachineArn=step_function_arn,
+            input=json.dumps(
+                {
+                    "filenames": selected_remaining_filenames,
+                }
+            ),
+        )
 
-    return {
-        "statusCode": 200,
-        "body": json.dumps(
-            f"Unprocessed files remaining: {len(filenames)}\n"
-            f"Kicked off {len(selected_remaining_filenames)} processes..."
-        ),
-    }
+        return {
+            "statusCode": 200,
+            "body": json.dumps(
+                f"{len(filenames)} unprocessed files remaining. "
+                f"Kicked off {len(selected_remaining_filenames)} processes..."
+            ),
+        }

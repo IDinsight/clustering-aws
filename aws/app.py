@@ -11,10 +11,6 @@ from clustering.kmeans import (
     kmeans_secondpass,
 )
 
-# from clustering.kmeans import parallel_kmeans_secondpass
-# secondpass_python_n_jobs = 1
-# secondpass_optuna_n_jobs = 2
-
 # admin variables
 id_col = "grid_id"
 lat_col = "Lat"
@@ -76,30 +72,31 @@ def cluster_data(gdf_for_cluster):
     print(f"Oversized clusters: {n_oversized}")
 
     # add urban_guess column
-    gdf_w_clusters = gdf_w_clusters.copy()
     gdf_w_clusters.loc[:, "dense_area_guess"] = 0
     gdf_w_clusters.loc[
-        gdf_w_clusters["cluster_weight"] > secondpass_cutoff_weight, "dense_area_guess"
+        gdf_w_clusters["cluster_weight"] > secondpass_cutoff_weight,
+        "dense_area_guess",
     ] = 1
 
-    # run re-clustering
-    gdf_w_clusters_doublepass = kmeans_secondpass(
-        gdf_w_clusters=gdf_w_clusters,
-        oversized_cluster_ids=oversized_cluster_ids,
-        desired_cluster_weight=desired_weight,
-        desired_cluster_radius=desired_radius,
-        id_col=id_col,
-        lat_col=lat_col,
-        lon_col=lon_col,
-        weight_col=weight_col,
-        weight_importance_factor=weight_importance_factor,
-        epsg=epsg,
-        n_trials=secondpass_n_trials,
-        n_jobs=n_jobs,
-    )
-    gdf_w_clusters_doublepass = gdf_w_clusters_doublepass.sort_values(by="cluster_id")
+    if n_oversized > 0:
+        # run re-clustering
+        gdf_w_clusters = kmeans_secondpass(
+            gdf_w_clusters=gdf_w_clusters,
+            oversized_cluster_ids=oversized_cluster_ids,
+            desired_cluster_weight=desired_weight,
+            desired_cluster_radius=desired_radius,
+            id_col=id_col,
+            lat_col=lat_col,
+            lon_col=lon_col,
+            weight_col=weight_col,
+            weight_importance_factor=weight_importance_factor,
+            epsg=epsg,
+            n_trials=secondpass_n_trials,
+            n_jobs=n_jobs,
+        )
+        gdf_w_clusters = gdf_w_clusters.sort_values(by="cluster_id")
 
-    return gdf_w_clusters_doublepass
+    return gdf_w_clusters
 
 
 def download_data(bucket, filename):

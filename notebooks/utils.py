@@ -11,6 +11,7 @@ from clustering.reporting import get_cluster_pivot_gdf
 def plot_weights_vs_radii(
     cluster_df: Optional[gpd.GeoDataFrame] = None,
     point_gdf_w_cluster: Optional[gpd.GeoDataFrame] = None,
+    point_gdf_cluster_id_col: str = "cluster_id",
     point_weight_col: str = "weight",
     point_projected_epsg: int = 26191,
     y_human_readable: str = "Rooftops",
@@ -25,6 +26,9 @@ def plot_weights_vs_radii(
         (as per get_cluster_pivot_gdf).
         Either provide this or the unpivoted point_df_w_cluster
     point_gdf_w_cluster : geodataframe containing point geometries and weights.
+        Either provide this or the pivoted cluster_df.
+    point_gdf_cluster_id_col : needed if point_gdf_w_cluster is given. Name of the column
+        containing the cluster IDs for grouping.
     point_weight_col : needed if point_gdf_w_cluster is given. Name of the column
         containing the weights each point (e.g. population).
     point_projected_epsg : needed if point_gdf_w_cluster is given. EPSG code for
@@ -45,6 +49,7 @@ def plot_weights_vs_radii(
     if cluster_df is None:
         cluster_df = get_cluster_pivot_gdf(
             gdf_w_clusters=point_gdf_w_cluster,
+            cluster_id_col=point_gdf_cluster_id_col,
             weight_col=point_weight_col,
             with_stats=True,
             epsg=point_projected_epsg,

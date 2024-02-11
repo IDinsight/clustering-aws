@@ -325,6 +325,7 @@ def _compute_clustering_score(
     # stats that depend on cluster geometries need pivot
     cluster_pivot_gdf = get_cluster_pivot_gdf(
         gdf_w_clusters=gdf_w_clusters,
+        cluster_id_col="cluster_id",
         weight_col=weight_col,
         epsg=epsg,
         with_stats=False,

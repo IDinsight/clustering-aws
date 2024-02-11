@@ -19,7 +19,7 @@ def lambda_handler(event, context):
         x.key.replace("clustered_", "") for x in s3r.Bucket(output_bucket).objects.all()
     )
 
-    payload_list = [
+    filenames = [
         {
             "filename": x.key
         }
@@ -27,17 +27,17 @@ def lambda_handler(event, context):
         if x.key not in target
     ]
 
-    # Only send first 10,000 barangays
-    # This is arbitrary - check limits and change 500 limit too maybe !!!!!!!!!!!!!!!!!
-    print(f"Remaining barangays: {len(payload_list)}")
-    selected_remaining_barangays = payload_list[:10001]
+    # Only send 7k unprocessed files per run.
+    # We're limited by how big the HTTP request to the state machine can be.
+    print(f"Remaining files: {len(filenames)}")
+    selected_remaining_filenames = filenames[:7000]
 
     # trigger sfn
     response = sfn.start_execution(
         stateMachineArn=step_function_arn,
         input=json.dumps(
             {
-                "filenames": selected_remaining_barangays,
+                "filenames": selected_remaining_filenames,
             }
         ),
     )
@@ -45,6 +45,7 @@ def lambda_handler(event, context):
     return {
         "statusCode": 200,
         "body": json.dumps(
-            f"Kicked off {len(selected_remaining_barangays)} processes..."
+            f"Unprocessed files remaining: {len(filenames)}\n"
+            f"Kicked off {len(selected_remaining_filenames)} processes..."
         ),
     }

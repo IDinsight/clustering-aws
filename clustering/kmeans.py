@@ -10,10 +10,10 @@ from sklearn.cluster import KMeans
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-from .reporting import get_cluster_pivot_gdf
-from .utils import create_ids
+from .utils import create_ids, get_cluster_pivot_gdf
 
 
+# Use for local or EC2 instance
 def parallel_kmeans_secondpass(
     gdf_w_clusters: gpd.GeoDataFrame,
     oversized_cluster_ids: list[str],
@@ -68,52 +68,52 @@ def parallel_kmeans_secondpass(
     return gdf_w_clusters_doublepass
 
 
-# LEGACY
-# def kmeans_secondpass(
-#     gdf_w_clusters: gpd.GeoDataFrame,
-#     oversized_cluster_ids: list[str],
-#     desired_cluster_weight: Union[float, int],
-#     desired_cluster_radius: Union[float, int],
-#     id_col: str = "rooftop_id",
-#     lat_col: str = "Lat_centroid",
-#     lon_col: str = "Lon_centroid",
-#     weight_col: Optional[str] = None,
-#     weight_importance_factor: Union[float, int] = 1,
-#     epsg: int = 26191,  # for morocco
-#     n_trials: int = 100,
-#     n_jobs: int = -1,
-# ) -> gpd.GeoDataFrame:
+# Use for AWS Lambda
+def kmeans_secondpass(
+    gdf_w_clusters: gpd.GeoDataFrame,
+    oversized_cluster_ids: list[str],
+    desired_cluster_weight: Union[float, int],
+    desired_cluster_radius: Union[float, int],
+    id_col: str = "rooftop_id",
+    lat_col: str = "Lat_centroid",
+    lon_col: str = "Lon_centroid",
+    weight_col: Optional[str] = None,
+    weight_importance_factor: Union[float, int] = 1,
+    epsg: int = 26191,  # for morocco
+    n_trials: int = 100,
+    n_jobs: int = -1,
+) -> gpd.GeoDataFrame:
 
-#     # make a copy of the gdf
-#     gdf_w_clusters_doublepass = gdf_w_clusters.copy()
+    # make a copy of the gdf
+    gdf_w_clusters_doublepass = gdf_w_clusters.copy()
 
-#     # rerun optimisation for each cluster that is oversized to split it up into smaller ones.
-#     for cluster_id in tqdm(oversized_cluster_ids):
-#         # subset data
-#         oversized_cluster = recluster(
-#             cluster_id=cluster_id,
-#             gdf_w_clusters=gdf_w_clusters,
-#             desired_cluster_weight=desired_cluster_weight,
-#             desired_cluster_radius=desired_cluster_radius,
-#             id_col=id_col,
-#             lat_col=lat_col,
-#             lon_col=lon_col,
-#             weight_col=weight_col,
-#             weight_importance_factor=weight_importance_factor,
-#             epsg=epsg,
-#             n_trials=n_trials,
-#             n_jobs=n_jobs,
-#         )
+    # rerun optimisation for each cluster that is oversized to split it up into smaller ones.
+    for cluster_id in oversized_cluster_ids:
+        # subset data
+        oversized_cluster = recluster(
+            cluster_id=cluster_id,
+            gdf_w_clusters=gdf_w_clusters,
+            desired_cluster_weight=desired_cluster_weight,
+            desired_cluster_radius=desired_cluster_radius,
+            id_col=id_col,
+            lat_col=lat_col,
+            lon_col=lon_col,
+            weight_col=weight_col,
+            weight_importance_factor=weight_importance_factor,
+            epsg=epsg,
+            n_trials=n_trials,
+            n_jobs=n_jobs,
+        )
 
-#         # replace the cluster_id of the oversized cluster with the new subclusters
-#         gdf_w_clusters_doublepass = gdf_w_clusters_doublepass[
-#             gdf_w_clusters_doublepass["cluster_id"] != cluster_id
-#         ]
-#         gdf_w_clusters_doublepass = pd.concat(
-#             [gdf_w_clusters_doublepass, oversized_cluster]
-#         )
+        # replace the cluster_id of the oversized cluster with the new subclusters
+        gdf_w_clusters_doublepass = gdf_w_clusters_doublepass[
+            gdf_w_clusters_doublepass["cluster_id"] != cluster_id
+        ]
+        gdf_w_clusters_doublepass = pd.concat(
+            [gdf_w_clusters_doublepass, oversized_cluster]
+        )
 
-#     return gdf_w_clusters_doublepass
+    return gdf_w_clusters_doublepass
 
 
 def get_oversized_clusters(
@@ -208,8 +208,9 @@ def run_optuna_kmeans_study(
         total_weight = gdf[weight_col].sum()
 
     expected_n_clusters = int(total_weight / desired_cluster_weight)
+    n_samples = len(gdf)
     min_n_clusters, max_n_clusters, search_space = get_min_max_search_space(
-        expected_n_clusters
+        expected_n_clusters, n_samples
     )
     study = optuna.create_study(
         sampler=optuna.samplers.GridSampler(search_space, seed=42),
@@ -239,12 +240,18 @@ def run_optuna_kmeans_study(
     return study
 
 
-def get_min_max_search_space(n_clusters: int) -> tuple[int, int, dict[str, list[int]]]:
-    if n_clusters < 2:
-        n_clusters = 2
+def get_min_max_search_space(
+    n_clusters: int, n_samples: int, scale_factor: int = 2
+) -> tuple[int, int, dict[str, list[int]]]:
 
-    min_n_clusters = n_clusters // 2
-    max_n_clusters = n_clusters * 2
+    max_n_clusters = max(n_clusters * scale_factor, scale_factor)
+    if n_samples < max_n_clusters:
+        # KMeans can't have more clusters than samples
+        max_n_clusters = n_samples
+        min_n_clusters = max(1, max_n_clusters // 4)
+    else:
+        min_n_clusters = max(n_clusters // scale_factor, 1)
+
     search_space = {"n_clusters": list(range(min_n_clusters, max_n_clusters + 1))}
 
     return min_n_clusters, max_n_clusters, search_space
@@ -317,6 +324,7 @@ def _compute_clustering_score(
     # stats that depend on cluster geometries need pivot
     cluster_pivot_gdf = get_cluster_pivot_gdf(
         gdf_w_clusters=gdf_w_clusters,
+        cluster_id_col="cluster_id",
         weight_col=weight_col,
         epsg=epsg,
         with_stats=False,

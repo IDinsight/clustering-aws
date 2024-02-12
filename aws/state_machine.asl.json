@@ -1,0 +1,37 @@
+{
+  "Comment": "Kick-off parallel clustering Lambdas at the command of the Kickoff Lambda",
+  "StartAt": "Map Merge",
+  "States": {
+    "Map Merge": {
+      "Type": "Map",
+      "ItemsPath": "$.filenames",
+      "Iterator": {
+        "StartAt": "Parallel Process",
+        "States": {
+          "Parallel Process": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "arn:aws:lambda:ap-south-1:865894278225:function:hpls-r3-clustering:$LATEST",
+              "Payload": {
+                "filename.$": "$.filename",
+                "input_bucket": "r3-individual-precluster-barangays",
+                "output_bucket": "r3-individual-postcluster-barangays"
+              }
+            },
+            "End": true,
+            "OutputPath": "$.StatusCode"
+          }
+        },
+        "ProcessorConfig": {
+          "Mode": "DISTRIBUTED",
+          "ExecutionType": "STANDARD"
+        }
+      },
+      "End": true,
+      "Label": "MapMerge",
+      "MaxConcurrency": 500,
+      "ToleratedFailurePercentage": 10
+    }
+  }
+}

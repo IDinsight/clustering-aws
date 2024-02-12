@@ -1,8 +1,53 @@
-# Temporary Repo for Clustering on AWS Lambdas
+# Clustering + AWS Lambdas
 
-This repo holds the code for running the latest optimised-k-means clustering algorithm (derived from the `gridsample` repo on 9th Feb 2024) on AWS Lambda for the HPLS project (round 3).
+This repo holds the code for:
 
-## Docker
+- Our latest optimised-k-means clustering algorithm
+- Running clustering on parallel AWS Lambdas
+
+## AWS Architecture
+
+<p align="center">
+<img src="./aws_diagram.png" alt="AWS Architecture" width=700/>
+</p>
+
+Components:
+
+- **S3 buckets**
+  - One "input_bucket" for files before clustering
+  - One "output_bucket" to save clustered files to
+
+- **Kickoff Lambda**: For sending filenames to the Step Function to distribute across clustering Lambdas
+  - Code: `aws/kickoff_lambda.py`. Copy this to a new Lambda.
+  - Inputs:
+    - S3 input bucket name
+    - S3 output bucket name
+    - No. files to send for processing
+
+  - Output
+        - List of filenames to process
+
+- **Step Function**: For orchestrating the running of one Clustering Lambda per file
+  - Code: `aws/state_machine.asl.json`. Copy this to a new Step Function state machine.
+  - Inputs:
+    - S3 input bucket name
+    - S3 output bucket name
+    - List of filenames to process automatically sent by Kickoff Lambda
+    - Max number of Lambdas to run at once
+  - Outputs:
+    - Kicks off Clustering Lambdas with the following payload:
+      - `{filename:"...", input_bucket:"...", output_bucket:"..."}`
+
+- **Clustering Lambda**: For clustering an input file and saving the output
+  - Code: `Dockerfile` and `aws/app.py`.  See "Clustering Lambda Setup" section below for details.
+  - Inputs:
+    - The following payload `{filename:"...", input_bucket:"...", output_bucket:"..."}`
+  - Outputs:
+    - Saves clustered file to the output bucket
+
+## Clustering Lambda Setup
+
+### Docker
 
 Write your Dockerfile with these [AWS docs](https://docs.aws.amazon.com/lambda/latest/dg/python-image.html#python-image-clients) in mind.
 
@@ -33,7 +78,7 @@ Test locally with:
     curl "http://localhost:9000/2015-03-31/functions/function/invocations" \
     -d '{"filename":"data_200902010.parquet", "input_bucket":"r3-hpls-presampling-barangays",  "output_bucket":"r3-hpls-clustered-barangays"}'
 
-## Docker push to ECR instructions
+### Push Docker image to ECR
 
 Example - ECR repo URL is 865894278225.dkr.ecr.ap-south-1.amazonaws.com.
 
@@ -51,7 +96,11 @@ Push to ECR with:
 
     docker push 865894278225.dkr.ecr.ap-south-1.amazonaws.com/hpls-r3-kmeans:latest
 
-## AWS Lambda Performance
+### Create Lambda
+
+Create a Lambda function from Docker image, select correct image and load. Test it with a suitable payload (see testing locally above).
+
+## Clustering Lambda Performance
 
 Example stats:
 
@@ -68,8 +117,8 @@ Based on this, I set the memory to 1024MB and timeout to 5mins.
 ## Notes
 
 - Input/output buckets are currently hardcoded into:
-  - The daddy Lambda function definition
-  - The Step Function inside Parallel Process's Payload editor.
+  - The kickoff Lambda function definition. See `aws/kickoff_lambda.py`.
+  - The Step Function inside Parallel Process's Payload editor. Also see `aws/state_machine.asl.json`
 
 ## To do
 

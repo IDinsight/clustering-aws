@@ -49,52 +49,58 @@ Components:
 
 ### Docker
 
-Write your Dockerfile with these [AWS docs](https://docs.aws.amazon.com/lambda/latest/dg/python-image.html#python-image-clients) in mind.
+#### Build the image
 
-Build with:
+    docker build -t clustering:latest .
 
-    docker build -t hpls-r3-kmeans:latest .
+#### Note regarding the Dockerfile
 
-Prepare for emulating Lambdas locally:
+Our Dockerfile is built on a `miniconda` python image because we need to use `conda` to install geopandas since `pip` was failing (due to issues installing the GDAL dependency).
+
+Since we're not using an official AWS Lambda python image, we have to add the "Lambda Runtime Interface Client" so Lambdas can use our image. See these [AWS docs](https://docs.aws.amazon.com/lambda/latest/dg/python-image.html#python-image-clients) for more details.
+
+### (Optional) Test locally
+
+#### Prepare for emulating Lambdas locally
 
     mkdir -p ~/.aws-lambda-rie && \
     curl -Lo ~/.aws-lambda-rie/aws-lambda-rie https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie && \
     chmod +x ~/.aws-lambda-rie/aws-lambda-rie
 
-Run locally with:
+#### Run the container locally
 
     docker run --env-file .env -d\
     -v ~/.aws-lambda-rie:/aws-lambda -p 9000:8080 \
     --entrypoint /aws-lambda/aws-lambda-rie \
-    hpls-r3-kmeans:latest /opt/conda/bin/python -m awslambdaric app.handler
+    clustering:latest /opt/conda/bin/python -m awslambdaric app.handler
 
-Note: If you want to actually access the S3 buckets, set the following in a .env file and load it with the `--env-file .env` flag when running `docker run`:
+If you don't want to actually access the S3 buckets, remove the `--env-file .env` flag.
+
+Otherwise, set the following in a `.env` file in root:
 
     AWS_ACCESS_KEY_ID=
     AWS_SECRET_ACCESS_KEY=
 
-Test locally with:
+#### Test locally
 
     curl "http://localhost:9000/2015-03-31/functions/function/invocations" \
-    -d '{"filename":"data_200902010.parquet", "input_bucket":"r3-hpls-presampling-barangays",  "output_bucket":"r3-hpls-clustered-barangays"}'
+    -d '{"filename":"<FILENAME>", "input_bucket":"<INPUT_BUCKET_NAME>",  "output_bucket":"<OUTPUT_BUCKET_NAME>"}'
 
 ### Push Docker image to ECR
 
-Example - ECR repo URL is 865894278225.dkr.ecr.ap-south-1.amazonaws.com.
+#### Tag the image
 
-Tag the image with:
+    docker tag clustering:latest <ECR_REPO_URL>/clustering:latest
 
-    docker tag hpls-r3-kmeans:latest 865894278225.dkr.ecr.ap-south-1.amazonaws.com/hpls-r3-kmeans:latest
+#### Login
 
-Login with:
-
-    aws ecr get-login-password --region ap-south-1 --profile <YOUR-AWS-PROFILE> | docker login --username AWS --password-stdin 865894278225.dkr.ecr.ap-south-1.amazonaws.com
+    aws ecr get-login-password --region <AWS-REGION> --profile <YOUR-AWS-PROFILE> | docker login --username AWS --password-stdin <ECR_REPO_URL>
 
 Note - follow these [docs](https://docs.aws.amazon.com/cli/latest/userguide/sso-configure-profile-token.html) if you're not authenticated or run into issues here or in the next step.
 
 Push to ECR with:
 
-    docker push 865894278225.dkr.ecr.ap-south-1.amazonaws.com/hpls-r3-kmeans:latest
+    docker push <ECR_REPO_URL>/clustering:latest
 
 ### Create Lambda
 
@@ -122,8 +128,9 @@ Based on this, I set the memory to 1024MB and timeout to 5mins.
 
 ## To do
 
-- Clean up
-- Add reasoning why we use a miniconda Docker image base and add Lambda functionality on top (and not an official Lambda image)
+- Major: Currently all clustering parameters are ***hardcoded*** into `app.py`, meaning that we have to recreate the Docker image and upload to the Clustering Lambda every time we want to change them.
+  - Change the architecture such that parameters are handled by endpoints.
 - Move all clustering-related code here and keep `gridsample` for data processing and pipeline code.
+- Move docs to `mkdocs`
 
 Contact: Amir Emami (@amiraliemami)

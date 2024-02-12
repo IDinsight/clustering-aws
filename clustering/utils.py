@@ -84,24 +84,25 @@ def get_cluster_pivot_gdf(
     return cluster_pivot_gdf
 
 
-def create_ids(df_length: int, prefix: str = "GRID_") -> list[str]:
+def create_ids(size: int, prefix: str = "GRID_") -> list[str]:
     """
     Create a list of string IDs in the format "{prefix}001".
 
     Parameters
     ----------
-    df : dataframe containing grids
+    size : Number to make the IDs up to.
+    prefix : String to use as prefix for the IDs
 
     Returns
     -------
-    list : list of string_id_list.
+    list : list of string ids.
     """
 
     # make list of ids [1, 2, 3, ...]
-    ids = list(range(1, df_length + 1))
+    ids = list(range(1, size + 1))
 
     # make list of ids with leading zeros ["001", "002", "003", ...]
-    max_digits = len(str(df_length))
+    max_digits = len(str(size))
     string_ids = [prefix + str(id).zfill(max_digits) for id in ids]
 
     return string_ids

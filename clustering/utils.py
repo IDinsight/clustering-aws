@@ -8,7 +8,7 @@ def get_cluster_pivot_gdf(
     epsg: int,
     cols_to_keep: list[str] = [],
     with_stats: bool = True,
-):
+) -> gpd.GeoDataFrame:
     """
     Returns a pivot table of the gdf_w_clusters with the cluster_id.
 
@@ -27,7 +27,7 @@ def get_cluster_pivot_gdf(
 
     Returns
     -------
-    cluster_pivot_gdf : dataframe containing GPS coordinates, grid IDs and weights,
+    cluster_pivot_gdf : geodataframe containing GPS coordinates, grid IDs and weights,
         pivoted by cluster_id.
     """
 
@@ -84,9 +84,10 @@ def get_cluster_pivot_gdf(
     return cluster_pivot_gdf
 
 
-def create_ids(size: int, prefix: str = "GRID_") -> list[str]:
+def create_ids(size: int, prefix: str) -> list[str]:
     """
-    Create a list of string IDs in the format "{prefix}001".
+    Create a list of string IDs in the format "ID_001".
+    Note - the numbering goes from 1 to size, not 0 to size-1.
 
     Parameters
     ----------
@@ -101,7 +102,8 @@ def create_ids(size: int, prefix: str = "GRID_") -> list[str]:
     # make list of ids [1, 2, 3, ...]
     ids = list(range(1, size + 1))
 
-    # make list of ids with leading zeros ["001", "002", "003", ...]
+    # make list of ids with as many leading zeros as necessary
+    # ["001", "002", "003", ...]
     max_digits = len(str(size))
     string_ids = [prefix + str(id).zfill(max_digits) for id in ids]
 

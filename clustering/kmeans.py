@@ -304,12 +304,12 @@ class KMeansObjective:
             self.weight_col = "weight"
 
         return _compute_clustering_score(
-            gdf_w_clusters,
+            gdf_w_clusters=gdf_w_clusters,
             weight_col=self.weight_col,
             epsg=self.epsg,
-            weight_importance_factor=self.weight_importance_factor,
             target_weight=self.target_weight,
             target_radius=self.target_radius,
+            weight_importance_factor=self.weight_importance_factor,
         )
 
 
@@ -317,25 +317,20 @@ def _compute_clustering_score(
     gdf_w_clusters: gpd.GeoDataFrame,
     weight_col: str,
     epsg: int,
-    weight_importance_factor: Union[float, int],
     target_weight: Union[float, int],
     target_radius: Union[float, int],
+    weight_importance_factor: Union[float, int] = 1,
 ) -> float:
     # stats that depend on cluster geometries need pivot
     cluster_pivot_gdf = pivot_by_cluster(
         gdf_w_clusters=gdf_w_clusters,
         cluster_id_col="cluster_id",
         weight_col=weight_col,
-        epsg=epsg,
-        with_stats=False,
     )
-    cluster_pivot_gdf = cluster_pivot_gdf.to_crs(epsg=epsg)
 
     # get median cluster radius and weight
-    radii = cluster_pivot_gdf["geometry"].minimum_bounding_radius()
-
-    # median
-    median_radius = radii.median()
+    cluster_pivot_gdf = cluster_pivot_gdf.to_crs(epsg=epsg)
+    median_radius = cluster_pivot_gdf["geometry"].minimum_bounding_radius().median()
     median_weight = cluster_pivot_gdf["cluster_weight"].median()
 
     # objective function

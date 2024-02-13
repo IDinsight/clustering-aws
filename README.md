@@ -69,7 +69,7 @@ Since we're not using an official AWS Lambda python image, we have to add the "L
 
 #### Run the container locally
 
-    docker run --env-file .env -d\
+    docker run --env-file .env -d \
     -v ~/.aws-lambda-rie:/aws-lambda -p 9000:8080 \
     --entrypoint /aws-lambda/aws-lambda-rie \
     clustering:latest /opt/conda/bin/python -m awslambdaric app.handler

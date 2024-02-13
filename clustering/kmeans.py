@@ -10,7 +10,7 @@ from sklearn.cluster import KMeans
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-from .utils import create_ids, get_cluster_pivot_gdf
+from .utils import create_ids, pivot_by_cluster
 
 
 # Use for local or EC2 instance
@@ -322,7 +322,7 @@ def _compute_clustering_score(
     target_radius: Union[float, int],
 ) -> float:
     # stats that depend on cluster geometries need pivot
-    cluster_pivot_gdf = get_cluster_pivot_gdf(
+    cluster_pivot_gdf = pivot_by_cluster(
         gdf_w_clusters=gdf_w_clusters,
         cluster_id_col="cluster_id",
         weight_col=weight_col,

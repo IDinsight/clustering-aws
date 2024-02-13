@@ -90,11 +90,13 @@ def pivot_by_cluster_w_stats(
         lambda row: row.centroid.x
     )
     # switch to projected CRS for radius and area
-    cluster_pivot_gdf = cluster_pivot_gdf.to_crs(epsg=epsg)
-    cluster_pivot_gdf["minimum_bounding_radius"] = cluster_pivot_gdf[
+    cluster_pivot_gdf_projected = cluster_pivot_gdf.to_crs(epsg=epsg)
+    cluster_pivot_gdf["minimum_bounding_radius"] = cluster_pivot_gdf_projected[
         "geometry"
     ].minimum_bounding_radius()
-    cluster_pivot_gdf["area_km^2"] = cluster_pivot_gdf["geometry"].area / 10**6
+    cluster_pivot_gdf["area_km^2"] = (
+        cluster_pivot_gdf_projected["geometry"].area / 10**6
+    )
 
     return cluster_pivot_gdf
 

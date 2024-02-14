@@ -414,12 +414,11 @@ def _run_optuna_study(
 ) -> optuna.Study:
     """Run Optuna to find the optimal number of clusters for kmeans."""
 
-    # get range of n_clusters to try
-    total_weight = gdf[weight_col].sum()
-    expected_n_clusters = int(total_weight / desired_cluster_weight)
-    n_samples = len(gdf)
     min_n_clusters, max_n_clusters, search_space = _get_min_max_search_space(
-        expected_n_clusters, n_samples
+        gdf=gdf,
+        weight_col=weight_col,
+        desired_cluster_weight=desired_cluster_weight,
+        scale_factor=2,
     )
 
     # run study
@@ -451,9 +450,14 @@ def _run_optuna_study(
 
 
 def _get_min_max_search_space(
-    expected_n_clusters: int, n_samples: int, scale_factor: int = 2
+    gdf: gpd.GeoDataFrame,
+    weight_col: str,
+    desired_cluster_weight: Union[float, int],
+    scale_factor: int = 2,
 ) -> tuple[int, int, dict[str, list[int]]]:
     """
+    NOTE: CHANGE THIS TO NORMAL DISTRIBUTION.
+
     This function generates the range of n_clusters for Optuna to try for KMeans.
 
     Given the expected_n_clusters and n_samples, it returns the min and max number of
@@ -469,6 +473,11 @@ def _get_min_max_search_space(
 
     Also, the min and max are always at least 1.
     """
+
+    # get range of n_clusters to try
+    total_weight = gdf[weight_col].sum()
+    expected_n_clusters = int(total_weight / desired_cluster_weight)
+    n_samples = len(gdf)
 
     max_n_clusters = max(expected_n_clusters * scale_factor, scale_factor)
     if n_samples < max_n_clusters:

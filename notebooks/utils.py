@@ -5,7 +5,7 @@ import geopandas as gpd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from clustering.utils import get_cluster_pivot_gdf
+from clustering.utils import pivot_by_cluster_w_stats
 
 
 def plot_weights_vs_radii(
@@ -23,7 +23,7 @@ def plot_weights_vs_radii(
     Parameters
     ----------
     cluster_df : pivoted dataframe containing cluster geometries and cluster_weights
-        (as per get_cluster_pivot_gdf).
+        (as per pivot_by_cluster).
         Either provide this or the unpivoted point_df_w_cluster
     point_gdf_w_cluster : geodataframe containing point geometries and weights.
         Either provide this or the pivoted cluster_df.
@@ -47,11 +47,10 @@ def plot_weights_vs_radii(
         raise ValueError("Either cluster_df or point_gdf_w_cluster must be provided.")
 
     if cluster_df is None:
-        cluster_df = get_cluster_pivot_gdf(
+        cluster_df = pivot_by_cluster_w_stats(
             gdf_w_clusters=point_gdf_w_cluster,
             cluster_id_col=point_gdf_cluster_id_col,
             weight_col=point_weight_col,
-            with_stats=True,
             epsg=point_projected_epsg,
         )
 

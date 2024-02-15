@@ -4,7 +4,7 @@ from subprocess import call
 import awswrangler as wr
 import geopandas as gpd
 
-from clustering.kmeans import get_multipass_optimised_clusters
+from clustering.kmeans import TunedClustering
 
 # admin
 id_col = "grid_id"
@@ -17,12 +17,12 @@ projected_epsg = 3121  # philippines
 desired_cluster_weight = 240
 weight_importance_factor = 1
 n_jobs = 1  # ALERT: Has to be 1 for AWS Lambdas!
-n_passes = 2
 # first pass
 initial_max_trials = 100
 # subsequent passe(es)
-subsequent_max_trials = 30
+n_passes = 2
 max_cluster_weight = 300
+subsequent_max_trials = 30
 
 
 def download_data(bucket, filename):
@@ -62,21 +62,23 @@ def handler(event, context):
         else:
             desired_cluster_radius = 2000
         # run clustering
-        gdf_w_clusters = get_multipass_optimised_clusters(
+        optimised_clustering = TunedClustering(
+            desired_cluster_weight=desired_cluster_weight,
+            desired_cluster_radius=desired_cluster_radius,
+            weight_importance_factor=weight_importance_factor,
+            initial_max_trials=initial_max_trials,
+            n_passes=n_passes,
+            max_cluster_weight=max_cluster_weight,
+            subsequent_max_trials=subsequent_max_trials,
+            n_jobs=n_jobs,
+            show_progress_bar=False,
+        )
+        gdf_w_clusters = optimised_clustering.run(
             gdf=gdf_for_cluster,
             lat_col=lat_col,
             lon_col=lon_col,
             weight_col=weight_col,
             projected_epsg=projected_epsg,
-            desired_cluster_weight=desired_cluster_weight,
-            desired_cluster_radius=desired_cluster_radius,
-            weight_importance_factor=weight_importance_factor,
-            initial_max_trials=initial_max_trials,
-            n_jobs=n_jobs,
-            n_passes=n_passes,
-            subsequent_max_trials=subsequent_max_trials,
-            max_cluster_weight=max_cluster_weight,
-            show_progress_bar=False,
             return_type="geodataframe",
         )
         gdf_w_clusters.to_parquet(f"/tmp/{output_filename}")

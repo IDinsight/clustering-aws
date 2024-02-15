@@ -182,7 +182,7 @@ def get_multipass_optimised_clusters(
                 progress_bar_desc=f"Pass {i+1} ({n_oversized} oversized clusters)",
             )
             # Run reclustering
-            gdf_w_clusters = recluster(oversized_cluster_ids=oversized_cluster_ids)
+            gdf_w_clusters = recluster.run(oversized_cluster_ids=oversized_cluster_ids)
         else:
             print("No more oversized clusters found, stopping early.")
             break
@@ -218,11 +218,12 @@ class ReCluster:
     """
     Recluster all oversized clusters with IDs in oversized_cluster_ids.
 
-    Initialise with the parameters with `recluster = ReCluster()` and then run
-    `recluster()` to recluster the oversized clusters.
+    How to use:
+    - Initialise with parameters with `recluster = ReCluster()`
+    - Then run `recluster.run()`
 
     Steps:
-    - Run SingleRecluster.run() for each oversized cluster
+    - Run SingleReCluster.run() for each oversized cluster
     - Drop old original oversized clusters rows
     - Re-add rows with new subcluster labels and weights. E.g. "CLUSTER_01_1".
 
@@ -258,7 +259,7 @@ class ReCluster:
         self.show_progress_bar = show_progress_bar
         self.progress_bar_desc = progress_bar_desc
 
-    def __call__(self, oversized_cluster_ids: list[str]):
+    def run(self, oversized_cluster_ids: list[str]):
 
         if self.n_jobs == 1:
             reclustered_clusters = self.recluster_sequential(oversized_cluster_ids)
@@ -292,14 +293,16 @@ class ReCluster:
             with Pool(processes=n_parallel_clusters) as pool:
                 reclustered_clusters = list(
                     tqdm(
-                        pool.imap(single_recluster, oversized_cluster_ids),
+                        pool.imap(single_recluster.run, oversized_cluster_ids),
                         total=len(oversized_cluster_ids),
                         desc=self.progress_bar_desc,
                     )
                 )
         else:
             with Pool(processes=n_parallel_clusters) as pool:
-                reclustered_clusters = pool.map(single_recluster, oversized_cluster_ids)
+                reclustered_clusters = pool.map(
+                    single_recluster.run, oversized_cluster_ids
+                )
         return reclustered_clusters
 
     def recluster_sequential(self, oversized_cluster_ids: list[str]):
@@ -320,13 +323,13 @@ class ReCluster:
         reclustered_clusters = []
         if self.show_progress_bar:
             for cluster_id in tqdm(oversized_cluster_ids, desc=self.progress_bar_desc):
-                oversized_cluster_gdf = single_recluster(
+                oversized_cluster_gdf = single_recluster.run(
                     cluster_id=cluster_id,
                 )
                 reclustered_clusters.append(oversized_cluster_gdf)
         else:
             for cluster_id in oversized_cluster_ids:
-                oversized_cluster_gdf = single_recluster(
+                oversized_cluster_gdf = single_recluster.run(
                     cluster_id=cluster_id,
                 )
                 reclustered_clusters.append(oversized_cluster_gdf)
@@ -356,6 +359,10 @@ class ReCluster:
 class SingleReCluster:
     """
     Re-cluster a single oversized cluster running get_optimised_clusters().
+
+    How to use:
+    - Initialise with parameters with `single_recluster = SingleReCluster()`
+    - Then run `single_recluster.run()`
 
     This function is used in ReCluster repeatedly to recluster every oversized
     cluster.
@@ -390,7 +397,7 @@ class SingleReCluster:
         self.max_trials = max_trials
         self.n_jobs = n_jobs
 
-    def __call__(
+    def run(
         self,
         cluster_id: str,
     ) -> gpd.GeoDataFrame:

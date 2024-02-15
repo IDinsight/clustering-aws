@@ -2,7 +2,6 @@ from multiprocessing import Pool
 from typing import Optional, Union, Literal
 
 import geopandas as gpd
-import numpy as np
 import optuna
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -13,23 +12,7 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 from .utils import create_ids, pivot_by_cluster, split_n_jobs
 
 
-def get_multipass_optimised_clusters(
-    gdf: gpd.GeoDataFrame,
-    lat_col: str,
-    lon_col: str,
-    projected_epsg: int,
-    desired_cluster_weight: Union[float, int],
-    desired_cluster_radius: Union[float, int],
-    weight_importance_factor: Union[float, int] = 1,
-    weight_col: Optional[str] = None,
-    initial_max_trials: int = 100,
-    n_jobs: int = -1,
-    n_passes: int = 1,
-    max_cluster_weight: Optional[Union[float, int]] = None,
-    subsequent_max_trials: int = 100,
-    show_progress_bar: bool = False,
-    return_type: Literal["geodataframe", "list"] = "geodataframe",
-) -> Union[list[str], gpd.GeoDataFrame]:
+class TunedClustering:
     """
     Cluster data using KMeans with the option of running multiple passes to handle
     oversized clusters.
@@ -37,12 +20,12 @@ def get_multipass_optimised_clusters(
     Features:
     - Ability to set the `weight_importance_factor` to control the importance of
         cluster weight versus cluster radius in the clustering process.
-    - Parallelised optimisation using Optuna.
-    - Ability to run multiple passes to break up oversized clusters.
-    - Ability to toggle progress bar on/off.
+    - Parallelised optimisation using Optuna (`n_jobs`).
+    - Ability to run multiple passes to break up oversized clusters (`n_passes`).
+    - Ability to toggle progress bars on/off (`show_progress_bar`).
 
     Steps:
-    - Run initial pass to get clusters
+    - Run initial pass to get clusters that are close to the desired weight and radius
     - Check for oversized clusters
     - If any oversized clusters found, recluster them
     - Repeat until no oversized clusters found or until max number of passes reached
@@ -51,17 +34,8 @@ def get_multipass_optimised_clusters(
         over different passes, subcluster numbers are added on for every breakup,
         e.g. "CLUSTER_001_01_...".
 
-    Parameters
+    Attributes
     ----------
-    gdf : gpd.GeoDataFrame
-        GeoDataFrame to cluster.
-    lat_col : str
-        Name of the column containing latitude data.
-    lon_col : str
-        Name of the column containing longitude data.
-    projected_epsg : int
-        EPSG code for the projected coordinate reference system for the region of
-        interest. This is used to calculate the minimum bounding radius of clusters.
     desired_cluster_weight : float or int
         Desired weight of each cluster. This is used to optimise clustering.
     desired_cluster_radius : float or int
@@ -69,13 +43,8 @@ def get_multipass_optimised_clusters(
     weight_importance_factor : float or int, default=1
         Factor to control the importance of cluster weight versus cluster radius in the
         clustering process. Higher values will prioritise weight over radius.
-    weight_col : str, default=None
-        Name of the column containing weight data. If None, a uniform weight of 1 is
-        used for all points.
     initial_max_trials : int, default=100
         Number of trials to run in the initial pass.
-    n_jobs : int, default=-1
-        Number of parallel jobs to run. -1 means using all processors.
     n_passes : int, default=1
         Number of passes to run. If 1, only the initial pass is run.
     max_cluster_weight : float or int
@@ -83,151 +52,224 @@ def get_multipass_optimised_clusters(
         oversized and will be reclustered.
     subsequent_max_trials : int, default=100
         Must be set if n_passes > 1. Number of trials to run in subsequent passes.
+    n_jobs : int, default=-1
+        Number of parallel jobs to run. -1 means using all processors.
     show_progress_bar : bool, default=False
         Whether to show a progress bar for the optimisation process.
-    return_type : "list" or "geodataframe", default="geodataframe"
-        Whether to return a GeoDataFrame or a list of cluster IDs.
 
-    Returns
+    Methods
     -------
-    gpd.GeoDataFrame or list
-        If "geodataframe", returns original GeoDataFrame with additional columns for
-            "cluster_id", "cluster_weight", and "cluster_pass".
-            The "cluster_pass" indicates which pass the cluster was formed in and
-            could loosely be interpreted as a measure of "density".
-        If return_type is "list", only returns a list of cluster IDs
+    run(gdf, lat_col, lon_col, projected_epsg, weight_col=None):
+        Runs the clustering process and returns the result.
     """
 
-    # check for valid parameters
-    if desired_cluster_weight <= 0 or desired_cluster_radius <= 0:
-        raise ValueError(
-            "Both desired_cluster_weight and desired_cluster_radius must be positive."
+    def __init__(
+        self,
+        desired_cluster_weight: Union[float, int],
+        desired_cluster_radius: Union[float, int],
+        weight_importance_factor: Union[float, int] = 1,
+        initial_max_trials: int = 100,
+        n_passes: int = 1,
+        max_cluster_weight: Optional[Union[float, int]] = None,
+        subsequent_max_trials: int = 100,
+        n_jobs: int = -1,
+        show_progress_bar: bool = False,
+    ) -> None:
+
+        self.desired_cluster_weight = desired_cluster_weight
+        self.desired_cluster_radius = desired_cluster_radius
+        self.weight_importance_factor = weight_importance_factor
+        self.initial_max_trials = initial_max_trials
+        self.n_jobs = n_jobs
+        self.n_passes = n_passes
+        self.max_cluster_weight = max_cluster_weight
+        self.subsequent_max_trials = subsequent_max_trials
+        self.show_progress_bar = show_progress_bar
+        self._check_input_params()
+
+    def run(
+        self,
+        gdf: gpd.GeoDataFrame,
+        lat_col: str,
+        lon_col: str,
+        projected_epsg: int,
+        weight_col: Optional[str] = None,
+        return_type: Literal["geodataframe", "list"] = "geodataframe",
+    ) -> Union[list[str], gpd.GeoDataFrame]:
+        """
+        Run the clustering process.
+
+        Parameters
+        ----------
+        gdf : gpd.GeoDataFrame
+            GeoDataFrame to cluster.
+        lat_col : str
+            Name of the column containing latitude.
+        lon_col : str
+            Name of the column containing longitude.
+        projected_epsg : int
+            EPSG code for the projected coordinate system to use.
+        weight_col : str, default=None
+            Name of the column containing weights. If None, a uniform weight of 1 is
+            used for all rows.
+        return_type : "list" or "geodataframe", default="geodataframe"
+            Whether to return a GeoDataFrame or a list of cluster IDs.
+
+        Returns
+        -------
+        gpd.GeoDataFrame or list
+            If "geodataframe", returns original GeoDataFrame with additional columns for
+                "cluster_id", "cluster_weight", and "cluster_pass".
+                The "cluster_pass" indicates which pass the cluster
+                was formed in and could loosely be interpreted as a measure of "density".
+            If return_type is "list", only returns a list of cluster IDs
+        """
+
+        if return_type != "geodataframe" and return_type != "list":
+            raise ValueError("return_type must be either 'geodataframe' or 'list'")
+
+        # add uniform weight column if none given (all other functions require this)
+        if weight_col is None:
+            weight_col = "weight"
+            gdf.loc[:, "weight"] = [1] * len(gdf)
+
+        # initial pass
+        gdf_w_clusters = get_optimised_clusters(
+            gdf=gdf,
+            lat_col=lat_col,
+            lon_col=lon_col,
+            weight_col=weight_col,
+            projected_epsg=projected_epsg,
+            desired_cluster_weight=self.desired_cluster_weight,
+            desired_cluster_radius=self.desired_cluster_radius,
+            weight_importance_factor=self.weight_importance_factor,
+            cluster_id_prefix="CLUSTER_",
+            max_trials=self.initial_max_trials,
+            n_jobs=self.n_jobs,
+            show_progress_bar=self.show_progress_bar,
         )
-    if weight_importance_factor < 0:
-        raise ValueError("weight_importance_factor must be 0 or more.")
-    if not isinstance(n_jobs, int) or n_jobs < -1 or n_jobs == 0:
-        raise ValueError("n_jobs must be -1 or a positive integer.")
-    if not isinstance(n_passes, int) or n_passes < 1:
-        raise ValueError("n_passes must be a positive integer.")
-    if not isinstance(initial_max_trials, int) or initial_max_trials < 1:
-        raise ValueError("initial_max_trials must be a positive integer.")
-    # check multi-pass parameters
-    if n_passes > 1:
-        if max_cluster_weight is None:
-            raise ValueError("max_cluster_weight must be set if n_passes > 1.")
-        if not isinstance(subsequent_max_trials, int) or subsequent_max_trials < 1:
-            raise ValueError(
-                "subsequent_max_trials must be set to a positive integer if n_passes > 1."
+
+        # add cluster_pass column to track which pass each cluster was formed in
+        gdf_w_clusters.loc[:, "cluster_pass"] = 1
+
+        for i in range(1, self.n_passes):
+            oversized_cluster_ids = self._get_oversized_clusters(
+                gdf_w_clusters=gdf_w_clusters, cutoff_weight=self.max_cluster_weight
             )
-    if return_type != "geodataframe" and return_type != "list":
-        raise ValueError("return_type must be either 'geodataframe' or 'list'")
 
-    # add uniform weight column if none given (all other functions require this)
-    if weight_col is None:
-        weight_col = "weight"
-        gdf.loc[:, "weight"] = [1] * len(gdf)
-
-    # initial pass
-    gdf_w_clusters = get_optimised_clusters(
-        gdf=gdf,
-        lat_col=lat_col,
-        lon_col=lon_col,
-        weight_col=weight_col,
-        projected_epsg=projected_epsg,
-        desired_cluster_weight=desired_cluster_weight,
-        desired_cluster_radius=desired_cluster_radius,
-        weight_importance_factor=weight_importance_factor,
-        cluster_id_prefix="CLUSTER_",
-        max_trials=initial_max_trials,
-        n_jobs=n_jobs,
-        show_progress_bar=show_progress_bar,
-    )
-
-    # add cluster_pass column to track which pass each cluster was formed in
-    gdf_w_clusters.loc[:, "cluster_pass"] = 1
-
-    for i in range(1, n_passes):
-        oversized_cluster_ids = _get_oversized_clusters(
-            gdf_w_clusters=gdf_w_clusters, cutoff_weight=max_cluster_weight
-        )
-
-        # update cluster_pass column with which pass it was formed in
-        gdf_w_clusters.loc[
-            gdf_w_clusters["cluster_id"].isin(oversized_cluster_ids),
-            "cluster_pass",
-        ] = (
-            i + 1
-        )
-
-        n_oversized = len(oversized_cluster_ids)
-        if i == 1:
-            print(f"{n_oversized} oversized clusters found in initial pass.")
-        if i > 1:
-            print(f"{n_oversized} oversized clusters left after {i} passes.")
-
-        if n_oversized > 0:
-            # initialise ReCluster object with correct parameters
-            recluster = ReCluster(
-                gdf_w_clusters=gdf_w_clusters,
-                lat_col=lat_col,
-                lon_col=lon_col,
-                weight_col=weight_col,
-                projected_epsg=projected_epsg,
-                desired_cluster_weight=desired_cluster_weight,
-                desired_cluster_radius=desired_cluster_radius,
-                weight_importance_factor=weight_importance_factor,
-                max_trials=subsequent_max_trials,
-                n_jobs=n_jobs,
-                show_progress_bar=show_progress_bar,
-                progress_bar_desc=f"Pass {i+1} ({n_oversized} oversized clusters)",
+            # update cluster_pass column with which pass it was formed in
+            gdf_w_clusters.loc[
+                gdf_w_clusters["cluster_id"].isin(oversized_cluster_ids),
+                "cluster_pass",
+            ] = (
+                i + 1
             )
-            # Run reclustering
-            gdf_w_clusters = recluster(oversized_cluster_ids=oversized_cluster_ids)
+
+            n_oversized = len(oversized_cluster_ids)
+            if i == 1:
+                print(f"{n_oversized} oversized clusters found in initial pass.")
+            if i > 1:
+                print(f"{n_oversized} oversized clusters left after {i} passes.")
+
+            if n_oversized > 0:
+                # Initialise ReCluster object with correct parameters
+                recluster = ReCluster(
+                    gdf_w_clusters=gdf_w_clusters,
+                    lat_col=lat_col,
+                    lon_col=lon_col,
+                    weight_col=weight_col,
+                    projected_epsg=projected_epsg,
+                    desired_cluster_weight=self.desired_cluster_weight,
+                    desired_cluster_radius=self.desired_cluster_radius,
+                    weight_importance_factor=self.weight_importance_factor,
+                    max_trials=self.subsequent_max_trials,
+                    n_jobs=self.n_jobs,
+                    show_progress_bar=self.show_progress_bar,
+                    progress_bar_desc=f"Pass {i+1} ({n_oversized} oversized clusters)",
+                )
+                # Run reclustering
+                gdf_w_clusters = recluster.run(
+                    oversized_cluster_ids=oversized_cluster_ids
+                )
+            else:
+                print("No more oversized clusters found, stopping early.")
+                break
+
+        if return_type == "geodataframe":
+            return gdf_w_clusters
+        elif return_type == "list":
+            return gdf_w_clusters["cluster_id"].tolist()
         else:
-            print("No more oversized clusters found, stopping early.")
-            break
+            raise ValueError("return_type must be either 'geodataframe' or 'list'")
 
-    if return_type == "geodataframe":
-        return gdf_w_clusters
-    elif return_type == "list":
-        return gdf_w_clusters["cluster_id"].tolist()
-    else:
-        raise ValueError("return_type must be either 'geodataframe' or 'list'")
+    def _get_oversized_clusters(
+        self,
+        gdf_w_clusters: Union[gpd.GeoDataFrame, pd.DataFrame],
+        cutoff_weight: Union[float, int],
+    ) -> list[str]:
+        """Get list of IDs of clusters that are oversized."""
 
+        unique_clusters_df = (
+            gdf_w_clusters[["cluster_id", "cluster_weight"]]
+            .drop_duplicates(subset="cluster_id")
+            .copy()
+        )
+        oversized_clusters_df = unique_clusters_df[
+            unique_clusters_df["cluster_weight"] > cutoff_weight
+        ]
+        oversized_cluster_ids = oversized_clusters_df["cluster_id"].tolist()
 
-def _get_oversized_clusters(
-    gdf_w_clusters: Union[gpd.GeoDataFrame, pd.DataFrame],
-    cutoff_weight: Union[float, int],
-) -> list[str]:
-    """Get list of IDs of clusters that are oversized."""
+        return oversized_cluster_ids
 
-    unique_clusters_df = (
-        gdf_w_clusters[["cluster_id", "cluster_weight"]]
-        .drop_duplicates(subset="cluster_id")
-        .copy()
-    )
-    oversized_clusters_df = unique_clusters_df[
-        unique_clusters_df["cluster_weight"] > cutoff_weight
-    ]
-    oversized_cluster_ids = oversized_clusters_df["cluster_id"].tolist()
-
-    return oversized_cluster_ids
+    def _check_input_params(self):
+        # check for valid parameters
+        if self.desired_cluster_weight <= 0 or self.desired_cluster_radius <= 0:
+            raise ValueError(
+                "Both desired_cluster_weight and desired_cluster_radius "
+                "must be non-zero and positive."
+            )
+        if self.weight_importance_factor < 0:
+            raise ValueError("weight_importance_factor must be 0 or more.")
+        if not isinstance(self.n_jobs, int) or self.n_jobs < -1 or self.n_jobs == 0:
+            raise ValueError("n_jobs must be -1 or a positive integer.")
+        if not isinstance(self.n_passes, int) or self.n_passes < 1:
+            raise ValueError("n_passes must be a positive integer.")
+        if not isinstance(self.initial_max_trials, int) or self.initial_max_trials < 1:
+            raise ValueError("initial_max_trials must be a positive integer.")
+        # check multi-pass parameters
+        if self.n_passes > 1:
+            if self.max_cluster_weight is None or self.max_cluster_weight <= 0:
+                raise ValueError(
+                    "max_cluster_weight must be set to a positive non-zero value "
+                    "if n_passes > 1."
+                )
+            if (
+                not isinstance(self.subsequent_max_trials, int)
+                or self.subsequent_max_trials < 1
+            ):
+                raise ValueError(
+                    "subsequent_max_trials must be set to a positive integer "
+                    "if n_passes > 1."
+                )
+        if not isinstance(self.show_progress_bar, bool):
+            raise ValueError("show_progress_bar must be a boolean.")
 
 
 class ReCluster:
     """
     Recluster all oversized clusters with IDs in oversized_cluster_ids.
 
-    Initialise with the parameters with `recluster = ReCluster()` and then run
-    `recluster()` to recluster the oversized clusters.
+    How to use:
+    - Initialise with parameters with `recluster = ReCluster(...)`
+    - Then run `recluster.run(oversized_cluster_ids)`
 
     Steps:
-    - Run SingleRecluster.run() for each oversized cluster
+    - Run SingleReCluster.run() for each oversized cluster
     - Drop old original oversized clusters rows
     - Re-add rows with new subcluster labels and weights. E.g. "CLUSTER_01_1".
 
     ALERT:
-    - Row order is not preserved.
+    - Row order is not preserved. Sort result by index if necessary.
     """
 
     def __init__(
@@ -258,19 +300,20 @@ class ReCluster:
         self.show_progress_bar = show_progress_bar
         self.progress_bar_desc = progress_bar_desc
 
-    def __call__(self, oversized_cluster_ids: list[str]):
+    def run(self, oversized_cluster_ids: list[str]):
+        """External method to run reclustering."""
 
         if self.n_jobs == 1:
-            reclustered_clusters = self.recluster_sequential(oversized_cluster_ids)
+            reclustered_clusters = self._recluster_sequential(oversized_cluster_ids)
         else:
-            reclustered_clusters = self.recluster_parallel(oversized_cluster_ids)
+            reclustered_clusters = self._recluster_parallel(oversized_cluster_ids)
 
-        reclustered_gdf_w_clusters = self.drop_and_add_rows(
+        reclustered_gdf_w_clusters = self._drop_and_add_rows(
             reclustered_clusters, oversized_cluster_ids
         )
         return reclustered_gdf_w_clusters
 
-    def recluster_parallel(self, oversized_cluster_ids: list[str]):
+    def _recluster_parallel(self, oversized_cluster_ids: list[str]):
         # split n_jobs into n_parallel_clusters and optuna_n_jobs
         n_parallel_clusters, optuna_n_jobs = split_n_jobs(self.n_jobs)
         # instantiate SingleReCluster with optuna_n_jobs
@@ -292,17 +335,19 @@ class ReCluster:
             with Pool(processes=n_parallel_clusters) as pool:
                 reclustered_clusters = list(
                     tqdm(
-                        pool.imap(single_recluster, oversized_cluster_ids),
+                        pool.imap(single_recluster.run, oversized_cluster_ids),
                         total=len(oversized_cluster_ids),
                         desc=self.progress_bar_desc,
                     )
                 )
         else:
             with Pool(processes=n_parallel_clusters) as pool:
-                reclustered_clusters = pool.map(single_recluster, oversized_cluster_ids)
+                reclustered_clusters = pool.map(
+                    single_recluster.run, oversized_cluster_ids
+                )
         return reclustered_clusters
 
-    def recluster_sequential(self, oversized_cluster_ids: list[str]):
+    def _recluster_sequential(self, oversized_cluster_ids: list[str]):
         # instantiate SingleReCluster with n_jobs
         single_recluster = SingleReCluster(
             gdf_w_clusters=self.gdf_w_clusters,
@@ -320,20 +365,20 @@ class ReCluster:
         reclustered_clusters = []
         if self.show_progress_bar:
             for cluster_id in tqdm(oversized_cluster_ids, desc=self.progress_bar_desc):
-                oversized_cluster_gdf = single_recluster(
+                oversized_cluster_gdf = single_recluster.run(
                     cluster_id=cluster_id,
                 )
                 reclustered_clusters.append(oversized_cluster_gdf)
         else:
             for cluster_id in oversized_cluster_ids:
-                oversized_cluster_gdf = single_recluster(
+                oversized_cluster_gdf = single_recluster.run(
                     cluster_id=cluster_id,
                 )
                 reclustered_clusters.append(oversized_cluster_gdf)
 
         return reclustered_clusters
 
-    def drop_and_add_rows(
+    def _drop_and_add_rows(
         self,
         reclustered_clusters: list[gpd.GeoDataFrame],
         oversized_cluster_ids: list[str],
@@ -357,13 +402,17 @@ class SingleReCluster:
     """
     Re-cluster a single oversized cluster running get_optimised_clusters().
 
+    How to use:
+    - Initialise with parameters with `single_recluster = SingleReCluster(...)`
+    - Then run `single_recluster.run(cluster_id)`
+
     This function is used in ReCluster repeatedly to recluster every oversized
     cluster.
 
     Steps:
     - Subset data to selected cluster
     - Run optimiser to find best n_clusters
-    - Return the original GeoDataFrame with added cluster_id and cluster_weight columns
+    - Return the original GeoDataFrame with *new* cluster_id and cluster_weight columns
     """
 
     def __init__(
@@ -390,7 +439,7 @@ class SingleReCluster:
         self.max_trials = max_trials
         self.n_jobs = n_jobs
 
-    def __call__(
+    def run(
         self,
         cluster_id: str,
     ) -> gpd.GeoDataFrame:
@@ -411,7 +460,7 @@ class SingleReCluster:
             desired_cluster_radius=self.desired_cluster_radius,
             weight_importance_factor=self.weight_importance_factor,
             cluster_id_prefix=f"{cluster_id}_",  # results like "CLUSTER_001_01"
-            max_trials=self.max_trials,  # maybe have different smaller max_trials here
+            max_trials=self.max_trials,
             n_jobs=self.n_jobs,
             show_progress_bar=False,
         )
@@ -446,7 +495,7 @@ def get_optimised_clusters(
     if gdf[weight_col].sum() == 0:
         print("All weights are zero. Tagging everything with CLUSTER_0 and 0.0 weight.")
         gdf_w_clusters = gdf.copy()
-        gdf_w_clusters.loc[:, "cluster_id"] = "CLUSTER_0"
+        gdf_w_clusters.loc[:, "cluster_id"] = f"{cluster_id_prefix}0"
         gdf_w_clusters.loc[:, "cluster_weight"] = 0.0
         return gdf_w_clusters
 
@@ -585,7 +634,7 @@ class OptunaKMeansObjective:
 
     Steps:
     - Fits a KMeans model to the data with the n_clusters suggested by Optuna
-    - Returns the score of the clustering as per _compute_clustering_score()
+    - Returns the score of the clustering as per compute_clustering_score()
     """
 
     def __init__(
@@ -629,7 +678,7 @@ class OptunaKMeansObjective:
         gdf_w_clusters = self.gdf.copy()
         gdf_w_clusters.loc[:, "cluster_id"] = clusters
 
-        return _compute_clustering_score(
+        return compute_clustering_score(
             gdf_w_clusters=gdf_w_clusters,
             weight_col=self.weight_col,
             projected_epsg=self.projected_epsg,
@@ -639,7 +688,7 @@ class OptunaKMeansObjective:
         )
 
 
-def _compute_clustering_score(
+def compute_clustering_score(
     gdf_w_clusters: gpd.GeoDataFrame,
     weight_col: str,
     projected_epsg: int,
@@ -692,24 +741,8 @@ def get_clusters(
 
     # rename if required
     if cluster_id_prefix is not None:
-        clusters = _rename_clusters(
-            clusters=clusters,
-            n_clusters=n_clusters,
-            cluster_id_prefix=cluster_id_prefix,
-        )
+        ids = create_ids(n_clusters, cluster_id_prefix)
+        id_replace_dict = dict(zip(range(n_clusters), ids))
+        clusters = [id_replace_dict[c] for c in clusters]
 
     return clusters
-
-
-def _rename_clusters(
-    clusters: np.ndarray,
-    n_clusters: int,
-    cluster_id_prefix: str,
-) -> list[str]:
-    """Create list of string cluster IDs with a prefix."""
-
-    # replace integer cluster IDs with `CLUSTER_001` format
-    ids = create_ids(n_clusters, cluster_id_prefix)
-    cluster_id_replace_dict = dict(zip(range(n_clusters), ids))
-
-    return [cluster_id_replace_dict[c] for c in clusters]

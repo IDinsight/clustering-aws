@@ -14,7 +14,7 @@ This repo holds the code for:
 Components:
 
 - **S3 buckets**
-  - One "input_bucket" for files before clustering
+  - One "input_bucket" for files containing `.parquet` GeoDataFrames to be clustered
   - One "output_bucket" to save clustered files to
 
 - **Kickoff Lambda**: For sending filenames to the Step Function to distribute across clustering Lambdas
@@ -22,7 +22,7 @@ Components:
   - Inputs:
     - S3 input bucket name
     - S3 output bucket name
-    - No. files to send for processing
+    - Number of files to send for processing
 
   - Output
         - List of filenames to process
@@ -44,6 +44,7 @@ Components:
     - The following payload `{filename:"...", input_bucket:"...", output_bucket:"..."}`
   - Outputs:
     - Saves clustered file to the output bucket
+  - ⚠️ Note: Clustering parameters are currently hardcoded into `aws/app.py`
 
 ## Clustering Lambda Setup
 
@@ -51,7 +52,9 @@ Components:
 
 #### Build the image
 
-    docker build -t clustering:latest .
+⚠️ Note: Clustering parameters are currently hardcoded into `aws/app.py`. You have to rebuild the image every time you want to change these.
+
+    docker build -t clustering:<VERSION> .
 
 #### Note regarding the Dockerfile
 
@@ -72,7 +75,7 @@ Since we're not using an official AWS Lambda python image, we have to add the "L
     docker run --env-file .env -d \
     -v ~/.aws-lambda-rie:/aws-lambda -p 9000:8080 \
     --entrypoint /aws-lambda/aws-lambda-rie \
-    clustering:latest /opt/conda/bin/python -m awslambdaric app.handler
+    clustering:<VERSION> /opt/conda/bin/python -m awslambdaric app.handler
 
 If you don't want to actually access the S3 buckets, remove the `--env-file .env` flag.
 
@@ -90,7 +93,7 @@ Otherwise, set the following in a `.env` file in root:
 
 #### Tag the image
 
-    docker tag clustering:latest <ECR_REPO_URL>/clustering:latest
+    docker tag clustering:<VERSION> <ECR_REPO_URL>/clustering:<VERSION>
 
 #### Login
 
@@ -100,7 +103,7 @@ Note - follow these [docs](https://docs.aws.amazon.com/cli/latest/userguide/sso-
 
 Push to ECR with:
 
-    docker push <ECR_REPO_URL>/clustering:latest
+    docker push <ECR_REPO_URL>/clustering:<VERSION>
 
 ### Create Lambda
 

@@ -169,8 +169,8 @@ def get_multipass_optimised_clusters(
             print(f"{n_oversized} oversized clusters left after {i} passes.")
 
         if n_oversized > 0:
-            gdf_w_clusters = recluster(
-                oversized_cluster_ids=oversized_cluster_ids,
+            # initialise ReCluster object with correct parameters
+            recluster = ReCluster(
                 gdf_w_clusters=gdf_w_clusters,
                 lat_col=lat_col,
                 lon_col=lon_col,
@@ -185,6 +185,8 @@ def get_multipass_optimised_clusters(
                 show_progress_bar=show_progress_bar,
                 progress_bar_desc=f"Pass {i+1} ({n_oversized} oversized clusters)",
             )
+            # Run reclustering
+            gdf_w_clusters = recluster(oversized_cluster_ids=oversized_cluster_ids)
         else:
             print("No more oversized clusters found, stopping early.")
             break
@@ -216,27 +218,15 @@ def _get_oversized_clusters(
     return oversized_cluster_ids
 
 
-def recluster(
-    oversized_cluster_ids: list[str],
-    gdf_w_clusters: gpd.GeoDataFrame,
-    lat_col: str,
-    lon_col: str,
-    weight_col: str,
-    projected_epsg: int,
-    desired_cluster_weight: Union[float, int],
-    desired_cluster_radius: Union[float, int],
-    weight_importance_factor: Union[float, int] = 1,
-    max_trials: int = 100,
-    n_jobs: int = -1,
-    parallel_reclustering: bool = False,
-    show_progress_bar: bool = False,
-    progress_bar_desc: str = "Reclustering",
-) -> gpd.GeoDataFrame:
+class ReCluster:
     """
     Recluster all oversized clusters with IDs in oversized_cluster_ids.
 
+    Initialise with the parameters with `recluster = ReCluster()` and then run
+    `recluster()` to recluster the oversized clusters.
+
     Steps:
-    - Run _recluster_single() for each oversized cluster
+    - Run SingleRecluster.run() for each oversized cluster
     - Drop old original oversized clusters rows
     - Re-add rows with new subcluster labels and weights. E.g. "CLUSTER_01_1".
 
@@ -244,89 +234,143 @@ def recluster(
     - Row order is not preserved.
     """
 
-    reclustered_clusters = []
+    def __init__(
+        self,
+        gdf_w_clusters: gpd.GeoDataFrame,
+        lat_col: str,
+        lon_col: str,
+        weight_col: str,
+        projected_epsg: int,
+        desired_cluster_weight: Union[float, int],
+        desired_cluster_radius: Union[float, int],
+        weight_importance_factor: Union[float, int] = 1,
+        max_trials: int = 100,
+        n_jobs: int = -1,
+        parallel_reclustering: bool = False,
+        show_progress_bar: bool = False,
+        progress_bar_desc: str = "Reclustering",
+    ):
+        self.gdf_w_clusters = gdf_w_clusters
+        self.lat_col = lat_col
+        self.lon_col = lon_col
+        self.weight_col = weight_col
+        self.projected_epsg = projected_epsg
+        self.desired_cluster_weight = desired_cluster_weight
+        self.desired_cluster_radius = desired_cluster_radius
+        self.weight_importance_factor = weight_importance_factor
+        self.max_trials = max_trials
+        self.n_jobs = n_jobs
+        self.parallel_reclustering = parallel_reclustering
+        self.show_progress_bar = show_progress_bar
+        self.progress_bar_desc = progress_bar_desc
 
-    if parallel_reclustering:
+    def __call__(self, oversized_cluster_ids: list[str]):
 
-        if n_jobs == 1:
+        if self.parallel_reclustering:
+            reclustered_clusters = self.recluster_parallel(oversized_cluster_ids)
+        else:
+            reclustered_clusters = self.recluster_sequential(oversized_cluster_ids)
+        reclustered_gdf_w_clusters = self.drop_and_add_rows(
+            reclustered_clusters, oversized_cluster_ids
+        )
+        return reclustered_gdf_w_clusters
+
+    def recluster_parallel(self, oversized_cluster_ids: list[str]):
+        if self.n_jobs == 1:
             n_parallel_clusters = 1
             optuna_n_jobs = 1
-        elif n_jobs == -1:
+        elif self.n_jobs == -1:
             n_parallel_clusters = 1
             optuna_n_jobs = 1
         else:
             n_parallel_clusters = 2
-            optuna_n_jobs = max(n_jobs // n_parallel_clusters, 1)
-        print(f"Running {n_parallel_clusters} parallel clusters with {optuna_n_jobs} Optuna jobs each. n_jobs = {n_jobs}.")
+            optuna_n_jobs = max(self.n_jobs // n_parallel_clusters, 1)
+        print(
+            f"Running {n_parallel_clusters} parallel clusters with {optuna_n_jobs} Optuna jobs each. n_jobs = {self.n_jobs}."
+        )
 
         single_recluster = SingleReCluster(
-            gdf_w_clusters=gdf_w_clusters,
-            lat_col=lat_col,
-            lon_col=lon_col,
-            weight_col=weight_col,
-            projected_epsg=projected_epsg,
-            desired_cluster_weight=desired_cluster_weight,
-            desired_cluster_radius=desired_cluster_radius,
-            weight_importance_factor=weight_importance_factor,
-            max_trials=max_trials,
-            n_jobs=optuna_n_jobs,
+            gdf_w_clusters=self.gdf_w_clusters,
+            lat_col=self.lat_col,
+            lon_col=self.lon_col,
+            weight_col=self.weight_col,
+            projected_epsg=self.projected_epsg,
+            desired_cluster_weight=self.desired_cluster_weight,
+            desired_cluster_radius=self.desired_cluster_radius,
+            weight_importance_factor=self.weight_importance_factor,
+            max_trials=self.max_trials,
+            n_jobs=optuna_n_jobs,  # NOTE: this is different from the sequential version
         )
-        if show_progress_bar:
+
+        reclustered_clusters = []
+        if self.show_progress_bar:
             with Pool(processes=n_parallel_clusters) as pool:
                 reclustered_clusters = list(
                     tqdm(
-                        pool.imap(single_recluster.run, oversized_cluster_ids),
+                        pool.imap(single_recluster, oversized_cluster_ids),
                         total=len(oversized_cluster_ids),
-                        desc=progress_bar_desc,
+                        desc=self.progress_bar_desc,
                     )
                 )
         else:
             with Pool(processes=n_parallel_clusters) as pool:
-                reclustered_clusters = pool.map(
-                    single_recluster.run, oversized_cluster_ids
-                )
-    else:
+                reclustered_clusters = pool.map(single_recluster, oversized_cluster_ids)
+        return reclustered_clusters
+
+    def recluster_sequential(self, oversized_cluster_ids: list[str]):
         single_recluster = SingleReCluster(
-            gdf_w_clusters=gdf_w_clusters,
-            lat_col=lat_col,
-            lon_col=lon_col,
-            weight_col=weight_col,
-            projected_epsg=projected_epsg,
-            desired_cluster_weight=desired_cluster_weight,
-            desired_cluster_radius=desired_cluster_radius,
-            weight_importance_factor=weight_importance_factor,
-            max_trials=max_trials,
-            n_jobs=n_jobs,
+            gdf_w_clusters=self.gdf_w_clusters,
+            lat_col=self.lat_col,
+            lon_col=self.lon_col,
+            weight_col=self.weight_col,
+            projected_epsg=self.projected_epsg,
+            desired_cluster_weight=self.desired_cluster_weight,
+            desired_cluster_radius=self.desired_cluster_radius,
+            weight_importance_factor=self.weight_importance_factor,
+            max_trials=self.max_trials,
+            n_jobs=self.n_jobs,
         )
 
-        if show_progress_bar:
-            for cluster_id in tqdm(oversized_cluster_ids, desc=progress_bar_desc):
-                oversized_cluster_gdf = single_recluster.run(
+        reclustered_clusters = []
+        if self.show_progress_bar:
+            for cluster_id in tqdm(oversized_cluster_ids, desc=self.progress_bar_desc):
+                oversized_cluster_gdf = single_recluster(
                     cluster_id=cluster_id,
                 )
                 reclustered_clusters.append(oversized_cluster_gdf)
         else:
             for cluster_id in oversized_cluster_ids:
-                oversized_cluster_gdf = single_recluster.run(
+                oversized_cluster_gdf = single_recluster(
                     cluster_id=cluster_id,
                 )
                 reclustered_clusters.append(oversized_cluster_gdf)
 
-    # drop old oversized clusters rows
-    gdf_w_clusters = gdf_w_clusters[
-        ~gdf_w_clusters["cluster_id"].isin(oversized_cluster_ids)
-    ]
-    # re-add rows with new subclusters
-    gdf_w_clusters = pd.concat([gdf_w_clusters] + reclustered_clusters)
+        return reclustered_clusters
 
-    return gdf_w_clusters
+    def drop_and_add_rows(
+        self,
+        reclustered_clusters: list[gpd.GeoDataFrame],
+        oversized_cluster_ids: list[str],
+    ):
+
+        reclustered_gdf_w_clusters = self.gdf_w_clusters.copy()
+        # drop old oversized clusters rows
+        reclustered_gdf_w_clusters = reclustered_gdf_w_clusters[
+            ~reclustered_gdf_w_clusters["cluster_id"].isin(oversized_cluster_ids)
+        ]
+        # re-add rows with new subclusters
+        reclustered_gdf_w_clusters = pd.concat(
+            [reclustered_gdf_w_clusters] + reclustered_clusters
+        )
+
+        return reclustered_gdf_w_clusters
 
 
 class SingleReCluster:
     """
-    Recluster a single oversized cluster running get_optimised_clusters().
+    Re-cluster a single oversized cluster running get_optimised_clusters().
 
-    This function is used in recluster() repeatedly to recluster every oversized
+    This function is used in ReCluster repeatedly to recluster every oversized
     cluster.
 
     Steps:
@@ -359,10 +403,10 @@ class SingleReCluster:
         self.max_trials = max_trials
         self.n_jobs = n_jobs
 
-    def run(
+    def __call__(
         self,
         cluster_id: str,
-    ):
+    ) -> gpd.GeoDataFrame:
         # subset data to selected cluster
         oversized_cluster_gdf = (
             self.gdf_w_clusters[self.gdf_w_clusters["cluster_id"] == cluster_id]

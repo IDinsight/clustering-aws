@@ -25,9 +25,8 @@ def get_multipass_optimised_clusters(
     initial_max_trials: int = 100,
     n_jobs: int = -1,
     n_passes: int = 1,
-    parallel_reclustering: bool = True,
-    subsequent_max_trials: int = 100,
     max_cluster_weight: Optional[Union[float, int]] = None,
+    subsequent_max_trials: int = 100,
     show_progress_bar: bool = False,
     return_type: Literal["geodataframe", "list"] = "geodataframe",
 ) -> Union[list[str], gpd.GeoDataFrame]:
@@ -79,14 +78,11 @@ def get_multipass_optimised_clusters(
         Number of parallel jobs to run. -1 means using all processors.
     n_passes : int, default=1
         Number of passes to run. If 1, only the initial pass is run.
-    parallel_reclustering : bool, default=True
-        Must be set if n_passes > 1. Whether to parallelise the reclustering process.
-        If False, the reclustering process will be run sequentially.
-    subsequent_max_trials : int, default=100
-        Must be set if n_passes > 1. Number of trials to run in subsequent passes.
     max_cluster_weight : float or int
         Must be set if n_passes > 1. Maximum weight above which a cluster is considered
         oversized and will be reclustered.
+    subsequent_max_trials : int, default=100
+        Must be set if n_passes > 1. Number of trials to run in subsequent passes.
     show_progress_bar : bool, default=False
         Whether to show a progress bar for the optimisation process.
     return_type : "list" or "geodataframe", default="geodataframe"
@@ -102,26 +98,27 @@ def get_multipass_optimised_clusters(
         If return_type is "list", only returns a list of cluster IDs
     """
 
-    # check inputs
-    if max_cluster_weight is None and n_passes > 1:
-        raise ValueError("max_cluster_weight must be set if n_passes > 1.")
-
-    # check for positivity
+    # check for valid parameters
     if desired_cluster_weight <= 0 or desired_cluster_radius <= 0:
         raise ValueError(
             "Both desired_cluster_weight and desired_cluster_radius must be positive."
         )
-    if weight_importance_factor <= 0:
-        raise ValueError("weight_importance_factor must be positive.")
-
-    # check for integerhood and positivity
+    if weight_importance_factor < 0:
+        raise ValueError("weight_importance_factor must be 0 or more.")
+    if not isinstance(n_jobs, int) or n_jobs < -1 or n_jobs == 0:
+        raise ValueError("n_jobs must be -1 or a positive integer.")
     if not isinstance(n_passes, int) or n_passes < 1:
         raise ValueError("n_passes must be a positive integer.")
     if not isinstance(initial_max_trials, int) or initial_max_trials < 1:
         raise ValueError("initial_max_trials must be a positive integer.")
-    if not isinstance(subsequent_max_trials, int) or subsequent_max_trials < 1:
-        raise ValueError("subsequent_max_trials must be a positive integer.")
-
+    # check multi-pass parameters
+    if n_passes > 1:
+        if max_cluster_weight is None:
+            raise ValueError("max_cluster_weight must be set if n_passes > 1.")
+        if not isinstance(subsequent_max_trials, int) or subsequent_max_trials < 1:
+            raise ValueError(
+                "subsequent_max_trials must be set to a positive integer if n_passes > 1."
+            )
     if return_type != "geodataframe" and return_type != "list":
         raise ValueError("return_type must be either 'geodataframe' or 'list'")
 
@@ -181,7 +178,6 @@ def get_multipass_optimised_clusters(
                 weight_importance_factor=weight_importance_factor,
                 max_trials=subsequent_max_trials,
                 n_jobs=n_jobs,
-                parallel_reclustering=parallel_reclustering,
                 show_progress_bar=show_progress_bar,
                 progress_bar_desc=f"Pass {i+1} ({n_oversized} oversized clusters)",
             )
@@ -246,7 +242,6 @@ class ReCluster:
         weight_importance_factor: Union[float, int] = 1,
         max_trials: int = 100,
         n_jobs: int = -1,
-        parallel_reclustering: bool = False,
         show_progress_bar: bool = False,
         progress_bar_desc: str = "Reclustering",
     ):
@@ -260,16 +255,16 @@ class ReCluster:
         self.weight_importance_factor = weight_importance_factor
         self.max_trials = max_trials
         self.n_jobs = n_jobs
-        self.parallel_reclustering = parallel_reclustering
         self.show_progress_bar = show_progress_bar
         self.progress_bar_desc = progress_bar_desc
 
     def __call__(self, oversized_cluster_ids: list[str]):
 
-        if self.parallel_reclustering:
-            reclustered_clusters = self.recluster_parallel(oversized_cluster_ids)
-        else:
+        if self.n_jobs == 1:
             reclustered_clusters = self.recluster_sequential(oversized_cluster_ids)
+        else:
+            reclustered_clusters = self.recluster_parallel(oversized_cluster_ids)
+
         reclustered_gdf_w_clusters = self.drop_and_add_rows(
             reclustered_clusters, oversized_cluster_ids
         )

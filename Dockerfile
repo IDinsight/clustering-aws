@@ -3,6 +3,7 @@ FROM continuumio/miniconda3:23.10.0-1
 
 # install geopandas through conda to avoid gdal issues
 RUN conda install geopandas==0.14.2 -y
+RUN conda install -c conda-forge shapely==2.0.2 -y
 
 # copy clustering module files
 COPY clustering /clustering

@@ -1,3 +1,6 @@
+import math
+import os
+from typing import Tuple
 import geopandas as gpd
 
 
@@ -125,3 +128,22 @@ def create_ids(size: int, prefix: str) -> list[str]:
     string_ids = [prefix + str(id).zfill(max_digits) for id in ids]
 
     return string_ids
+
+
+def split_n_jobs(n_jobs: int) -> Tuple[int, int]:
+    """Split n_jobs into two factors that are as close as possible to each other."""
+    if n_jobs == 1:
+        n_parallel_clusters = 1
+        optuna_n_jobs = 1
+    elif n_jobs == -1:
+        n_jobs = os.cpu_count() or 1  # in case os.cpu_count() returns None
+
+    # Split n_jobs into two factors that are as close as possible to each other.
+    root = math.sqrt(n_jobs)
+    factor = int(root)
+    while n_jobs % factor != 0:
+        factor -= 1
+    optuna_n_jobs = factor  # the smaller number
+    n_parallel_clusters = n_jobs // factor  # the larger number
+
+    return n_parallel_clusters, optuna_n_jobs

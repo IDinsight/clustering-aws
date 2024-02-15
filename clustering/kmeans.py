@@ -10,7 +10,7 @@ from tqdm.notebook import tqdm
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-from .utils import create_ids, pivot_by_cluster
+from .utils import create_ids, pivot_by_cluster, split_n_jobs
 
 
 def get_multipass_optimised_clusters(
@@ -276,19 +276,9 @@ class ReCluster:
         return reclustered_gdf_w_clusters
 
     def recluster_parallel(self, oversized_cluster_ids: list[str]):
-        if self.n_jobs == 1:
-            n_parallel_clusters = 1
-            optuna_n_jobs = 1
-        elif self.n_jobs == -1:
-            n_parallel_clusters = 1
-            optuna_n_jobs = 1
-        else:
-            n_parallel_clusters = 2
-            optuna_n_jobs = max(self.n_jobs // n_parallel_clusters, 1)
-        print(
-            f"Running {n_parallel_clusters} parallel clusters with {optuna_n_jobs} Optuna jobs each. n_jobs = {self.n_jobs}."
-        )
-
+        # split n_jobs into n_parallel_clusters and optuna_n_jobs
+        n_parallel_clusters, optuna_n_jobs = split_n_jobs(self.n_jobs)
+        # instantiate SingleReCluster with optuna_n_jobs
         single_recluster = SingleReCluster(
             gdf_w_clusters=self.gdf_w_clusters,
             lat_col=self.lat_col,
@@ -299,9 +289,9 @@ class ReCluster:
             desired_cluster_radius=self.desired_cluster_radius,
             weight_importance_factor=self.weight_importance_factor,
             max_trials=self.max_trials,
-            n_jobs=optuna_n_jobs,  # NOTE: this is different from the sequential version
+            n_jobs=optuna_n_jobs,
         )
-
+        # recluster oversized clusters in parallel
         reclustered_clusters = []
         if self.show_progress_bar:
             with Pool(processes=n_parallel_clusters) as pool:
@@ -318,6 +308,7 @@ class ReCluster:
         return reclustered_clusters
 
     def recluster_sequential(self, oversized_cluster_ids: list[str]):
+        # instantiate SingleReCluster with n_jobs
         single_recluster = SingleReCluster(
             gdf_w_clusters=self.gdf_w_clusters,
             lat_col=self.lat_col,
@@ -330,7 +321,7 @@ class ReCluster:
             max_trials=self.max_trials,
             n_jobs=self.n_jobs,
         )
-
+        # recluster oversized clusters sequentially
         reclustered_clusters = []
         if self.show_progress_bar:
             for cluster_id in tqdm(oversized_cluster_ids, desc=self.progress_bar_desc):
@@ -352,6 +343,7 @@ class ReCluster:
         reclustered_clusters: list[gpd.GeoDataFrame],
         oversized_cluster_ids: list[str],
     ):
+        """Drop old oversized clusters rows and re-add rows with new subclusters."""
 
         reclustered_gdf_w_clusters = self.gdf_w_clusters.copy()
         # drop old oversized clusters rows

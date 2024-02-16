@@ -21,7 +21,7 @@ class TunedClustering:
     - Ability to set the `weight_importance_factor` to control the importance of
         cluster weight versus cluster radius in the clustering process.
     - Parallelised optimisation using Optuna (`n_jobs`).
-    - Ability to run multiple passes to break up oversized clusters (`max_n_passes`).
+    - Ability to run multiple passes to break up oversized clusters (`max_passes`).
     - Ability to toggle progress bars on/off (`show_progress_bar`).
 
     Steps:
@@ -45,19 +45,19 @@ class TunedClustering:
         clustering process. Higher values will prioritise weight over radius.
     initial_max_trials : int, default=100
         Number of trials to run in the initial pass.
-    max_n_passes : int, default=1
+    max_passes : int, default=1
         Max number of passes to run to breakup oversized clusters.
         The algorithm will stop early if there are no oversized clusters left or if the
         number of oversized clusters does not change over 3 passes.
         - Setting this to a high number is roughly equivalent to running the algorithm
             until no more benefit is gained from further passes, but with the safety
-            of a hard stop at `max_n_passes`.
+            of a hard stop at `max_passes`.
         - If set to 1, only the initial pass is run.
     max_cluster_weight : float or int
-        Must be set if max_n_passes > 1. Maximum weight above which a cluster is
+        Must be set if max_passes > 1. Maximum weight above which a cluster is
         considered oversized and will be reclustered.
     subsequent_max_trials : int, default=100
-        Must be set if max_n_passes > 1. Number of trials to run in subsequent passes.
+        Must be set if max_passes > 1. Number of trials to run in subsequent passes.
     n_jobs : int, default=-1
         Number of parallel jobs to run. -1 means using all processors.
     show_progress_bar : bool, default=False
@@ -75,7 +75,7 @@ class TunedClustering:
         desired_cluster_radius: Union[float, int],
         weight_importance_factor: Union[float, int] = 1,
         initial_max_trials: int = 100,
-        max_n_passes: int = 1,
+        max_passes: int = 1,
         max_cluster_weight: Optional[Union[float, int]] = None,
         subsequent_max_trials: int = 100,
         n_jobs: int = -1,
@@ -87,7 +87,7 @@ class TunedClustering:
         self.weight_importance_factor = weight_importance_factor
         self.initial_max_trials = initial_max_trials
         self.n_jobs = n_jobs
-        self.max_n_passes = max_n_passes
+        self.max_passes = max_passes
         self.max_cluster_weight = max_cluster_weight
         self.subsequent_max_trials = subsequent_max_trials
         self.show_progress_bar = show_progress_bar
@@ -161,7 +161,7 @@ class TunedClustering:
 
         # passes 2 onwards...
         n_oversized_history = []
-        for i in range(2, self.max_n_passes + 1):
+        for i in range(2, self.max_passes + 1):
             oversized_cluster_ids = self._get_oversized_clusters(
                 gdf_w_clusters=gdf_w_clusters, cutoff_weight=self.max_cluster_weight
             )
@@ -247,16 +247,16 @@ class TunedClustering:
             raise ValueError("weight_importance_factor must be 0 or more.")
         if not isinstance(self.n_jobs, int) or self.n_jobs < -1 or self.n_jobs == 0:
             raise ValueError("n_jobs must be -1 or a positive integer.")
-        if not isinstance(self.max_n_passes, int) or self.max_n_passes <= 0:
-            raise ValueError("max_n_passes must be a positive integer.")
+        if not isinstance(self.max_passes, int) or self.max_passes <= 0:
+            raise ValueError("max_passes must be a positive integer.")
         if not isinstance(self.initial_max_trials, int) or self.initial_max_trials <= 0:
             raise ValueError("initial_max_trials must be a positive integer.")
         # check multi-pass parameters
-        if self.max_n_passes > 1:
+        if self.max_passes > 1:
             if self.max_cluster_weight is None or self.max_cluster_weight <= 0:
                 raise ValueError(
                     "max_cluster_weight must be set to a positive non-zero value "
-                    "if max_n_passes > 1."
+                    "if max_passes > 1."
                 )
             if (
                 not isinstance(self.subsequent_max_trials, int)
@@ -264,7 +264,7 @@ class TunedClustering:
             ):
                 raise ValueError(
                     "subsequent_max_trials must be set to a positive integer "
-                    "if max_n_passes > 1."
+                    "if max_passes > 1."
                 )
         if not isinstance(self.show_progress_bar, bool):
             raise ValueError("show_progress_bar must be a boolean.")

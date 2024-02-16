@@ -20,7 +20,7 @@ n_jobs = 1  # ALERT: Has to be 1 for AWS Lambdas!
 # first pass
 initial_max_trials = 100
 # subsequent passe(es)
-max_n_passes = 2
+max_passes = 2
 max_cluster_weight = 300
 subsequent_max_trials = 30
 
@@ -67,7 +67,7 @@ def handler(event, context):
             desired_cluster_radius=desired_cluster_radius,
             weight_importance_factor=weight_importance_factor,
             initial_max_trials=initial_max_trials,
-            max_n_passes=max_n_passes,
+            max_passes=max_passes,
             max_cluster_weight=max_cluster_weight,
             subsequent_max_trials=subsequent_max_trials,
             n_jobs=n_jobs,

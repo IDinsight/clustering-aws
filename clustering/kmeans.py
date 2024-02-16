@@ -166,7 +166,6 @@ class TunedClustering:
                 gdf_w_clusters=gdf_w_clusters, cutoff_weight=self.max_cluster_weight
             )
             n_oversized = len(oversized_cluster_ids)
-            n_oversized_history.append(n_oversized)
             print(f"{n_oversized} oversized clusters left after {i-1} passes.")
 
             # stopping conditions
@@ -175,9 +174,7 @@ class TunedClustering:
                 break
             elif (
                 i >= 3
-                and n_oversized_history[-1]
-                == n_oversized_history[-2]
-                == n_oversized_history[-3]
+                and n_oversized == n_oversized_history[-1] == n_oversized_history[-2]
             ):
                 print(
                     f"Number of oversized clusters {n_oversized} has not changed "
@@ -186,6 +183,13 @@ class TunedClustering:
                 break
             # continue if not stopping
             else:
+                n_oversized_history.append(n_oversized)
+                gdf_w_clusters.loc[
+                    gdf_w_clusters["cluster_id"].isin(oversized_cluster_ids),
+                    "cluster_pass",
+                ] = i
+
+                # run recluster
                 recluster = ReCluster(
                     gdf_w_clusters=gdf_w_clusters,
                     lat_col=lat_col,
@@ -203,12 +207,6 @@ class TunedClustering:
                 gdf_w_clusters = recluster.run(
                     oversized_cluster_ids=oversized_cluster_ids
                 )
-
-                # update cluster_pass column with which pass the cluster was formed in
-                gdf_w_clusters.loc[
-                    gdf_w_clusters["cluster_id"].isin(oversized_cluster_ids),
-                    "cluster_pass",
-                ] = i
 
         if return_type == "geodataframe":
             return gdf_w_clusters
@@ -755,7 +753,7 @@ def get_clusters(
         n_clusters=n_clusters,
         batch_size=1024,
         n_init=1,
-        reassignment_ratio=0.1,  # gets rid of small clusters!
+        reassignment_ratio=0.05,  # gets rid of small clusters!
         random_state=42,
     )
     clusters = list(kmeans.fit_predict(X=X, sample_weight=sample_weight))

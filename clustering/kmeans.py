@@ -74,6 +74,7 @@ class TunedClustering:
         desired_cluster_weight: Union[float, int],
         desired_cluster_radius: Union[float, int],
         weight_importance_factor: Union[float, int] = 1,
+        minibatch_reassignment_ratio: float = 0.05,
         initial_max_trials: int = 100,
         max_passes: int = 1,
         max_cluster_weight: Optional[Union[float, int]] = None,
@@ -85,6 +86,7 @@ class TunedClustering:
         self.desired_cluster_weight = desired_cluster_weight
         self.desired_cluster_radius = desired_cluster_radius
         self.weight_importance_factor = weight_importance_factor
+        self.minibatch_reassignment_ratio = minibatch_reassignment_ratio
         self.initial_max_trials = initial_max_trials
         self.n_jobs = n_jobs
         self.max_passes = max_passes
@@ -147,6 +149,7 @@ class TunedClustering:
             desired_cluster_weight=self.desired_cluster_weight,
             desired_cluster_radius=self.desired_cluster_radius,
             weight_importance_factor=self.weight_importance_factor,
+            minibatch_reassignment_ratio=self.minibatch_reassignment_ratio,
             cluster_id_prefix="CLUSTER_",
             max_trials=self.initial_max_trials,
             n_jobs=self.n_jobs,
@@ -195,6 +198,7 @@ class TunedClustering:
                     desired_cluster_weight=self.desired_cluster_weight,
                     desired_cluster_radius=self.desired_cluster_radius,
                     weight_importance_factor=self.weight_importance_factor,
+                    minibatch_reassignment_ratio=self.minibatch_reassignment_ratio,
                     max_trials=self.subsequent_max_trials,
                     n_jobs=self.n_jobs,
                     show_progress_bar=self.show_progress_bar,
@@ -297,6 +301,7 @@ class ReCluster:
         desired_cluster_weight: Union[float, int],
         desired_cluster_radius: Union[float, int],
         weight_importance_factor: Union[float, int] = 1,
+        minibatch_reassignment_ratio: float = 0.05,
         max_trials: int = 100,
         n_jobs: int = -1,
         show_progress_bar: bool = False,
@@ -309,6 +314,7 @@ class ReCluster:
         self.desired_cluster_weight = desired_cluster_weight
         self.desired_cluster_radius = desired_cluster_radius
         self.weight_importance_factor = weight_importance_factor
+        self.minibatch_reassignment_ratio = minibatch_reassignment_ratio
         self.max_trials = max_trials
         self.n_jobs = n_jobs
         self.show_progress_bar = show_progress_bar
@@ -339,6 +345,7 @@ class ReCluster:
             desired_cluster_weight=self.desired_cluster_weight,
             desired_cluster_radius=self.desired_cluster_radius,
             weight_importance_factor=self.weight_importance_factor,
+            minibatch_reassignment_ratio=self.minibatch_reassignment_ratio,
             max_trials=self.max_trials,
             n_jobs=optuna_n_jobs,
         )
@@ -370,6 +377,7 @@ class ReCluster:
             desired_cluster_weight=self.desired_cluster_weight,
             desired_cluster_radius=self.desired_cluster_radius,
             weight_importance_factor=self.weight_importance_factor,
+            minibatch_reassignment_ratio=self.minibatch_reassignment_ratio,
             max_trials=self.max_trials,
             n_jobs=self.n_jobs,
         )
@@ -436,6 +444,7 @@ class SingleReCluster:
         desired_cluster_weight: Union[float, int],
         desired_cluster_radius: Union[float, int],
         weight_importance_factor: Union[float, int] = 1,
+        minibatch_reassignment_ratio: float = 0.05,
         max_trials: int = 100,
         n_jobs: int = -1,
     ):
@@ -446,6 +455,7 @@ class SingleReCluster:
         self.desired_cluster_weight = desired_cluster_weight
         self.desired_cluster_radius = desired_cluster_radius
         self.weight_importance_factor = weight_importance_factor
+        self.minibatch_reassignment_ratio = minibatch_reassignment_ratio
         self.max_trials = max_trials
         self.n_jobs = n_jobs
 
@@ -468,6 +478,7 @@ class SingleReCluster:
             desired_cluster_weight=self.desired_cluster_weight,
             desired_cluster_radius=self.desired_cluster_radius,
             weight_importance_factor=self.weight_importance_factor,
+            minibatch_reassignment_ratio=self.minibatch_reassignment_ratio,
             cluster_id_prefix=f"{cluster_id}_",  # results like "CLUSTER_001_01"
             max_trials=self.max_trials,
             n_jobs=self.n_jobs,
@@ -484,6 +495,7 @@ def get_optimised_clusters(
     desired_cluster_weight: Union[float, int],
     desired_cluster_radius: Union[float, int],
     weight_importance_factor: Union[float, int] = 1,
+    minibatch_reassignment_ratio: float = 0.05,
     cluster_id_prefix: str = "CLUSTER_",
     max_trials: int = 100,
     n_jobs: int = -1,
@@ -516,6 +528,7 @@ def get_optimised_clusters(
         desired_cluster_weight=desired_cluster_weight,
         desired_cluster_radius=desired_cluster_radius,
         weight_importance_factor=weight_importance_factor,
+        minibatch_reassignment_ratio=minibatch_reassignment_ratio,
         max_trials=max_trials,
         n_jobs=n_jobs,
         show_progress_bar=show_progress_bar,
@@ -528,6 +541,7 @@ def get_optimised_clusters(
         y_col=y_col,
         x_col=x_col,
         weight_col=weight_col,
+        minibatch_reassignment_ratio=minibatch_reassignment_ratio,
         cluster_id_prefix=cluster_id_prefix,
     )
 
@@ -549,6 +563,7 @@ def _run_optuna_study(
     desired_cluster_weight: Union[float, int],
     desired_cluster_radius: Union[float, int],
     weight_importance_factor: Union[float, int] = 1,
+    minibatch_reassignment_ratio: float = 0.05,
     max_trials: int = 100,
     n_jobs: int = -1,
     show_progress_bar: bool = False,
@@ -578,6 +593,7 @@ def _run_optuna_study(
         target_weight=desired_cluster_weight,
         target_radius=desired_cluster_radius,
         weight_importance_factor=weight_importance_factor,
+        minibatch_reassignment_ratio=minibatch_reassignment_ratio,
     )
     study.optimize(
         optuna_objective,
@@ -653,6 +669,7 @@ class OptunaKMeansObjective:
         target_weight: Union[float, int],
         target_radius: Union[float, int],
         weight_importance_factor: Union[float, int] = 1,
+        minibatch_reassignment_ratio: float = 0.05,
     ) -> None:
         self.gdf = gdf
         self.min_n_clusters = min_n_clusters
@@ -663,6 +680,8 @@ class OptunaKMeansObjective:
         self.weight_importance_factor = weight_importance_factor
         self.target_weight = target_weight
         self.target_radius = target_radius
+        self.weight_importance_factor = weight_importance_factor
+        self.minibatch_reassignment_ratio = minibatch_reassignment_ratio
 
     def __call__(self, trial) -> float:
         n_clusters = trial.suggest_int(
@@ -676,6 +695,7 @@ class OptunaKMeansObjective:
             y_col=self.y_col,
             x_col=self.x_col,
             weight_col=self.weight_col,
+            minibatch_reassignment_ratio=self.minibatch_reassignment_ratio,
             cluster_id_prefix=None,
         )
         gdf_w_clusters = self.gdf.copy()
@@ -727,6 +747,7 @@ def get_clusters(
     y_col: str,
     x_col: str,
     weight_col: Optional[str] = None,
+    minibatch_reassignment_ratio: float = 0.05,
     cluster_id_prefix: Optional[str] = None,
 ) -> list:
     """Run KMeans and return list of cluster IDs. Optionally rename clusters."""
@@ -740,7 +761,7 @@ def get_clusters(
         n_clusters=n_clusters,
         batch_size=1024,
         n_init=1,
-        reassignment_ratio=0.05,  # gets rid of small clusters!
+        reassignment_ratio=minibatch_reassignment_ratio,  # gets rid of small clusters!
         random_state=42,
     )
     clusters = list(kmeans.fit_predict(X=X, sample_weight=sample_weight))

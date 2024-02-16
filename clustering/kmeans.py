@@ -4,7 +4,7 @@ from typing import Optional, Union, Literal
 import geopandas as gpd
 import optuna
 import pandas as pd
-from sklearn.cluster import KMeans
+from sklearn.cluster import MiniBatchKMeans
 from tqdm.notebook import tqdm
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -751,7 +751,13 @@ def get_clusters(
     sample_weight = df[weight_col]
 
     # fit
-    kmeans = KMeans(n_clusters=n_clusters, n_init="auto", random_state=42)
+    kmeans = MiniBatchKMeans(
+        n_clusters=n_clusters,
+        batch_size=1024,
+        n_init=1,
+        reassignment_ratio=0.1,  # gets rid of small clusters!
+        random_state=42,
+    )
     clusters = list(kmeans.fit_predict(X=X, sample_weight=sample_weight))
 
     # rename if required

@@ -2,6 +2,8 @@ from multiprocessing import Pool
 from typing import Optional, Union, Literal
 
 import geopandas as gpd
+import numpy as np
+from scipy.stats import norm
 import optuna
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -203,7 +205,6 @@ class TunedClustering:
                 gdf_w_clusters = recluster.run(
                     oversized_cluster_ids=oversized_cluster_ids
                 )
-
                 # update cluster_pass column with which pass the cluster was formed in
                 gdf_w_clusters.loc[
                     gdf_w_clusters["cluster_id"].isin(oversized_cluster_ids),
@@ -216,7 +217,6 @@ class TunedClustering:
             return gdf_w_clusters["cluster_id"].tolist()
         else:
             raise ValueError("return_type must be either 'geodataframe' or 'list'")
-
     def _get_oversized_clusters(
         self,
         gdf_w_clusters: Union[gpd.GeoDataFrame, pd.DataFrame],
@@ -235,6 +235,7 @@ class TunedClustering:
         oversized_cluster_ids = oversized_clusters_df["cluster_id"].tolist()
 
         return oversized_cluster_ids
+
 
     def _check_input_params(self):
         # check for valid parameters
@@ -564,16 +565,16 @@ def _run_optuna_study(
 ) -> optuna.Study:
     """Run Optuna to find the optimal number of clusters for kmeans."""
 
-    min_n_clusters, max_n_clusters, search_space = _get_min_max_search_space(
+    search_space = _get_search_space(
         gdf=gdf,
         weight_col=weight_col,
         desired_cluster_weight=desired_cluster_weight,
-        scale_factor=2,
+        sample_size=max_trials,
     )
 
     # run study
     study = optuna.create_study(
-        sampler=optuna.samplers.GridSampler(search_space, seed=42),
+        sampler=optuna.samplers.GridSampler({"n_clusters": search_space}, seed=42),
         direction="minimize",
         study_name="optimisation",
     )
@@ -583,8 +584,8 @@ def _run_optuna_study(
         lon_col=lon_col,
         weight_col=weight_col,
         projected_epsg=projected_epsg,
-        min_n_clusters=min_n_clusters,
-        max_n_clusters=max_n_clusters,
+        min_n_clusters=min(search_space),
+        max_n_clusters=max(search_space),
         target_weight=desired_cluster_weight,
         target_radius=desired_cluster_radius,
         weight_importance_factor=weight_importance_factor,
@@ -599,47 +600,83 @@ def _run_optuna_study(
     return study
 
 
-def _get_min_max_search_space(
+def _get_search_space(
     gdf: gpd.GeoDataFrame,
     weight_col: str,
     desired_cluster_weight: Union[float, int],
-    scale_factor: int = 2,
-) -> tuple[int, int, dict[str, list[int]]]:
-    """
-    NOTE: CHANGE THIS TO NORMAL DISTRIBUTION.
+    sample_size: int,
+) -> list[int]:
+    """Generates values of n_clusters for Optuna to try."""
 
-    This function generates the range of n_clusters for Optuna to try for KMeans.
-
-    Given the expected_n_clusters and n_samples, it returns the min and max number of
-    clusters to try as well as an Optuna-digested search_space based on this.
-
-    The scale factor is used to determine how many clusters to try. Expected
-    behaviour is:
-        min_n_clusters = expected_n_clusters // scale_factor
-        max_n_clusters = expected_n_clusters * scale_factor
-    However, if n_samples < max_n_clusters, KMeans will fail on the upper bound
-    since it can't have more clusters than samples. In this case, max_n_clusters
-    is set to n_samples and min_n_clusters is set to max_n_clusters // 4.
-
-    Also, the min and max are always at least 1.
-    """
-
-    # get range of n_clusters to try
+    # get required variables
     total_weight = gdf[weight_col].sum()
-    expected_n_clusters = int(total_weight / desired_cluster_weight)
-    n_samples = len(gdf)
+    expected_n_clusters = max(int(total_weight / desired_cluster_weight), 1)
+    n_points = len(gdf)
 
-    max_n_clusters = max(expected_n_clusters * scale_factor, scale_factor)
-    if n_samples < max_n_clusters:
-        # KMeans can't have more clusters than samples
-        max_n_clusters = n_samples
-        min_n_clusters = max(1, max_n_clusters // 4)
-    else:
-        min_n_clusters = max(expected_n_clusters // scale_factor, 1)
+    # get values picked from normal distribution around "desired_cluster_weight"
+    search_space = get_normal_samples(
+        n_points=n_points,
+        expected_n_clusters=expected_n_clusters,
+        sample_size=sample_size,
+    )
 
-    search_space = {"n_clusters": list(range(min_n_clusters, max_n_clusters + 1))}
+    return search_space
 
-    return min_n_clusters, max_n_clusters, search_space
+
+def get_normal_samples(
+    n_points: int,
+    expected_n_clusters: int,
+    sample_size: int,
+    scale_factor: int = 3,
+):
+    """
+    Get a sample of n_clusters options from a normal distribution around
+    expected_n_clusters.
+
+    Notes:
+    - If expected_n_clusters is greater than n_points, it is set to n_points.
+    - If expected_n_clusters is less than 1, it is set to 1.
+    - Sigma of the distribution is proportional to `expected_n_clusters` (as in
+        `expected_n_clusters/scale_factor`) to capture the idea that higher
+        `expected_n_clusters`
+        are probably less accurate and we should try a wider range of possible values.
+    - The scale_factor is set to 3 to get a distribution that is not too narrow nor too wide.
+    - Number of samples is not guaranteed to be `sample_size`, since in edge cases the function will
+        filter out all options with a probability of 0 to avoid errors in np.random.choice().
+    """
+
+    if expected_n_clusters > n_points:
+        expected_n_clusters = n_points
+    if expected_n_clusters < 1:
+        expected_n_clusters = 1
+
+    # get list of all n_clusters options
+    all_options = np.arange(1, n_points + 1)
+
+    # get normal distribution around expected_n_clusters to pick from
+    mu = expected_n_clusters
+    sigma = expected_n_clusters / scale_factor
+    p = norm.pdf(all_options, loc=mu, scale=sigma)
+    # normalize the probabilities as required by np.random.choice()
+    p_scaler = 1 / p.sum()
+    p = p * p_scaler
+
+    # filter out all options with a probability of 0 to avoid errors in np.random.choice()
+    non_zero_filter = p > 0
+    non_zero_p = p[non_zero_filter]
+    non_zero_options = all_options[non_zero_filter]
+
+    # select options
+    sample_size = min(len(non_zero_options), sample_size)
+    selected_choices = np.random.choice(
+        non_zero_options, size=sample_size, p=non_zero_p, replace=False
+    )
+    selected_choices = np.sort(selected_choices)
+
+    # convert to normal ints
+    selected_choices = selected_choices.tolist()
+
+    return selected_choices
 
 
 class OptunaKMeansObjective:

@@ -205,7 +205,6 @@ class TunedClustering:
                 gdf_w_clusters = recluster.run(
                     oversized_cluster_ids=oversized_cluster_ids
                 )
-
                 # update cluster_pass column with which pass the cluster was formed in
                 gdf_w_clusters.loc[
                     gdf_w_clusters["cluster_id"].isin(oversized_cluster_ids),
@@ -218,7 +217,6 @@ class TunedClustering:
             return gdf_w_clusters["cluster_id"].tolist()
         else:
             raise ValueError("return_type must be either 'geodataframe' or 'list'")
-
     def _get_oversized_clusters(
         self,
         gdf_w_clusters: Union[gpd.GeoDataFrame, pd.DataFrame],
@@ -237,6 +235,7 @@ class TunedClustering:
         oversized_cluster_ids = oversized_clusters_df["cluster_id"].tolist()
 
         return oversized_cluster_ids
+
 
     def _check_input_params(self):
         # check for valid parameters

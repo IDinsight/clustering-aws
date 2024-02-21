@@ -65,7 +65,7 @@ class TunedClustering:
 
     Methods
     -------
-    run(gdf, lat_col, lon_col, projected_epsg, weight_col=None):
+    run(gdf, projected_epsg, weight_col=None):
         Runs the clustering process and returns the result.
     """
 
@@ -98,8 +98,6 @@ class TunedClustering:
     def run(
         self,
         gdf: gpd.GeoDataFrame,
-        lat_col: str,
-        lon_col: str,
         projected_epsg: int,
         weight_col: Optional[str] = None,
         return_type: Literal["geodataframe", "list"] = "geodataframe",
@@ -111,10 +109,6 @@ class TunedClustering:
         ----------
         gdf : gpd.GeoDataFrame
             GeoDataFrame to cluster.
-        lat_col : str
-            Name of the column containing latitude.
-        lon_col : str
-            Name of the column containing longitude.
         projected_epsg : int
             EPSG code for the projected coordinate system to use.
         weight_col : str, default=None
@@ -137,18 +131,21 @@ class TunedClustering:
             raise ValueError("return_type must be either 'geodataframe' or 'list'")
 
         # add uniform weight column if none given
-        # (all other functions require a weight column to exist)
         if weight_col is None:
             weight_col = "weight"
             gdf.loc[:, "weight"] = [1] * len(gdf)
 
+        # get projected gdf to use going forward
+        gdf_projected = gdf[[weight_col, "geometry"]].to_crs(epsg=projected_epsg)
+        gdf_projected.loc[:, "x"] = gdf_projected.centroid.x
+        gdf_projected.loc[:, "y"] = gdf_projected.centroid.y
+
         # initial pass
-        gdf_w_clusters = get_optimised_clusters(
-            gdf=gdf,
-            lat_col=lat_col,
-            lon_col=lon_col,
+        projected_gdf_w_clusters = get_optimised_clusters(
+            gdf=gdf_projected,
+            x_col="x",
+            y_col="y",
             weight_col=weight_col,
-            projected_epsg=projected_epsg,
             desired_cluster_weight=self.desired_cluster_weight,
             desired_cluster_radius=self.desired_cluster_radius,
             weight_importance_factor=self.weight_importance_factor,
@@ -160,13 +157,13 @@ class TunedClustering:
         )
 
         # add cluster_pass column to track which pass each cluster was formed in
-        gdf_w_clusters.loc[:, "cluster_pass"] = 1
+        projected_gdf_w_clusters.loc[:, "cluster_pass"] = 1
 
         # passes 2 onwards...
         n_oversized_history = []
         for i in range(2, self.max_passes + 1):
             oversized_cluster_ids = self._get_oversized_clusters(
-                gdf_w_clusters=gdf_w_clusters, cutoff_weight=self.max_cluster_weight
+                gdf_w_clusters=projected_gdf_w_clusters, cutoff_weight=self.max_cluster_weight
             )
             n_oversized = len(oversized_cluster_ids)
             print(f"{n_oversized} oversized clusters left after {i-1} passes.")
@@ -187,18 +184,17 @@ class TunedClustering:
             # continue if not stopping
             else:
                 n_oversized_history.append(n_oversized)
-                gdf_w_clusters.loc[
-                    gdf_w_clusters["cluster_id"].isin(oversized_cluster_ids),
+                projected_gdf_w_clusters.loc[
+                    projected_gdf_w_clusters["cluster_id"].isin(oversized_cluster_ids),
                     "cluster_pass",
                 ] = i
 
                 # run recluster
                 recluster = ReCluster(
-                    gdf_w_clusters=gdf_w_clusters,
-                    lat_col=lat_col,
-                    lon_col=lon_col,
+                    gdf_w_clusters=projected_gdf_w_clusters,
+                    x_col="x",
+                    y_col="y",
                     weight_col=weight_col,
-                    projected_epsg=projected_epsg,
                     desired_cluster_weight=self.desired_cluster_weight,
                     desired_cluster_radius=self.desired_cluster_radius,
                     weight_importance_factor=self.weight_importance_factor,
@@ -208,9 +204,16 @@ class TunedClustering:
                     show_progress_bar=self.show_progress_bar,
                     progress_bar_desc=f"Pass {i} ({n_oversized} oversized clusters)",
                 )
-                gdf_w_clusters = recluster.run(
+                projected_gdf_w_clusters = recluster.run(
                     oversized_cluster_ids=oversized_cluster_ids
                 )
+
+        # merge back to original gdf
+        gdf_w_clusters = gdf.merge(
+            projected_gdf_w_clusters[["cluster_id", "cluster_weight", "cluster_pass"]],
+            left_index=True,
+            right_index=True,
+        )
 
         if return_type == "geodataframe":
             return gdf_w_clusters
@@ -292,10 +295,9 @@ class ReCluster:
     def __init__(
         self,
         gdf_w_clusters: gpd.GeoDataFrame,
-        lat_col: str,
-        lon_col: str,
+        y_col: str,
+        x_col: str,
         weight_col: str,
-        projected_epsg: int,
         desired_cluster_weight: Union[float, int],
         desired_cluster_radius: Union[float, int],
         weight_importance_factor: Union[float, int] = 1,
@@ -306,10 +308,9 @@ class ReCluster:
         progress_bar_desc: str = "Reclustering",
     ):
         self.gdf_w_clusters = gdf_w_clusters
-        self.lat_col = lat_col
-        self.lon_col = lon_col
+        self.y_col = y_col
+        self.x_col = x_col
         self.weight_col = weight_col
-        self.projected_epsg = projected_epsg
         self.desired_cluster_weight = desired_cluster_weight
         self.desired_cluster_radius = desired_cluster_radius
         self.weight_importance_factor = weight_importance_factor
@@ -338,10 +339,9 @@ class ReCluster:
         # instantiate SingleReCluster with optuna_n_jobs
         single_recluster = SingleReCluster(
             gdf_w_clusters=self.gdf_w_clusters,
-            lat_col=self.lat_col,
-            lon_col=self.lon_col,
+            y_col=self.y_col,
+            x_col=self.x_col,
             weight_col=self.weight_col,
-            projected_epsg=self.projected_epsg,
             desired_cluster_weight=self.desired_cluster_weight,
             desired_cluster_radius=self.desired_cluster_radius,
             weight_importance_factor=self.weight_importance_factor,
@@ -371,10 +371,9 @@ class ReCluster:
         # instantiate SingleReCluster with n_jobs
         single_recluster = SingleReCluster(
             gdf_w_clusters=self.gdf_w_clusters,
-            lat_col=self.lat_col,
-            lon_col=self.lon_col,
+            y_col=self.y_col,
+            x_col=self.x_col,
             weight_col=self.weight_col,
-            projected_epsg=self.projected_epsg,
             desired_cluster_weight=self.desired_cluster_weight,
             desired_cluster_radius=self.desired_cluster_radius,
             weight_importance_factor=self.weight_importance_factor,
@@ -439,10 +438,9 @@ class SingleReCluster:
     def __init__(
         self,
         gdf_w_clusters: gpd.GeoDataFrame,
-        lat_col: str,
-        lon_col: str,
+        y_col: str,
+        x_col: str,
         weight_col: str,
-        projected_epsg: int,
         desired_cluster_weight: Union[float, int],
         desired_cluster_radius: Union[float, int],
         weight_importance_factor: Union[float, int] = 1,
@@ -451,10 +449,9 @@ class SingleReCluster:
         n_jobs: int = -1,
     ):
         self.gdf_w_clusters = gdf_w_clusters
-        self.lat_col = lat_col
-        self.lon_col = lon_col
+        self.y_col = y_col
+        self.x_col = x_col
         self.weight_col = weight_col
-        self.projected_epsg = projected_epsg
         self.desired_cluster_weight = desired_cluster_weight
         self.desired_cluster_radius = desired_cluster_radius
         self.weight_importance_factor = weight_importance_factor
@@ -475,10 +472,9 @@ class SingleReCluster:
         # run optimiser to find best n_clusters
         oversized_cluster_gdf = get_optimised_clusters(
             gdf=oversized_cluster_gdf,
-            lat_col=self.lat_col,
-            lon_col=self.lon_col,
+            y_col=self.y_col,
+            x_col=self.x_col,
             weight_col=self.weight_col,
-            projected_epsg=self.projected_epsg,
             desired_cluster_weight=self.desired_cluster_weight,
             desired_cluster_radius=self.desired_cluster_radius,
             weight_importance_factor=self.weight_importance_factor,
@@ -493,10 +489,9 @@ class SingleReCluster:
 
 def get_optimised_clusters(
     gdf: gpd.GeoDataFrame,
-    lat_col: str,
-    lon_col: str,
+    y_col: str,
+    x_col: str,
     weight_col: str,
-    projected_epsg: int,
     desired_cluster_weight: Union[float, int],
     desired_cluster_radius: Union[float, int],
     weight_importance_factor: Union[float, int] = 1,
@@ -527,10 +522,9 @@ def get_optimised_clusters(
     # run optimiser to find best n_clusters
     study = _run_optuna_study(
         gdf=gdf,
-        lat_col=lat_col,
-        lon_col=lon_col,
+        y_col=y_col,
+        x_col=x_col,
         weight_col=weight_col,
-        projected_epsg=projected_epsg,
         desired_cluster_weight=desired_cluster_weight,
         desired_cluster_radius=desired_cluster_radius,
         weight_importance_factor=weight_importance_factor,
@@ -544,8 +538,8 @@ def get_optimised_clusters(
     clusters = get_clusters(
         df=gdf,
         n_clusters=study.best_params["n_clusters"],
-        lat_col=lat_col,
-        lon_col=lon_col,
+        y_col=y_col,
+        x_col=x_col,
         weight_col=weight_col,
         minibatch_reassignment_ratio=minibatch_reassignment_ratio,
         cluster_id_prefix=cluster_id_prefix,
@@ -563,10 +557,9 @@ def get_optimised_clusters(
 
 def _run_optuna_study(
     gdf: gpd.GeoDataFrame,
-    lat_col: str,
-    lon_col: str,
+    y_col: str,
+    x_col: str,
     weight_col: str,
-    projected_epsg: int,
     desired_cluster_weight: Union[float, int],
     desired_cluster_radius: Union[float, int],
     weight_importance_factor: Union[float, int] = 1,
@@ -592,10 +585,9 @@ def _run_optuna_study(
     )
     optuna_objective = OptunaKMeansObjective(
         gdf=gdf,
-        lat_col=lat_col,
-        lon_col=lon_col,
+        y_col=y_col,
+        x_col=x_col,
         weight_col=weight_col,
-        projected_epsg=projected_epsg,
         min_n_clusters=min_n_clusters,
         max_n_clusters=max_n_clusters,
         target_weight=desired_cluster_weight,
@@ -669,10 +661,9 @@ class OptunaKMeansObjective:
     def __init__(
         self,
         gdf: gpd.GeoDataFrame,
-        lat_col: str,
-        lon_col: str,
+        y_col: str,
+        x_col: str,
         weight_col: str,
-        projected_epsg: int,
         min_n_clusters: int,
         max_n_clusters: int,
         target_weight: Union[float, int],
@@ -683,10 +674,10 @@ class OptunaKMeansObjective:
         self.gdf = gdf
         self.min_n_clusters = min_n_clusters
         self.max_n_clusters = max_n_clusters
-        self.lat_col = lat_col
-        self.lon_col = lon_col
+        self.y_col = y_col
+        self.x_col = x_col
         self.weight_col = weight_col
-        self.projected_epsg = projected_epsg
+        self.weight_importance_factor = weight_importance_factor
         self.target_weight = target_weight
         self.target_radius = target_radius
         self.weight_importance_factor = weight_importance_factor
@@ -701,8 +692,8 @@ class OptunaKMeansObjective:
         clusters = get_clusters(
             df=self.gdf,
             n_clusters=n_clusters,
-            lat_col=self.lat_col,
-            lon_col=self.lon_col,
+            y_col=self.y_col,
+            x_col=self.x_col,
             weight_col=self.weight_col,
             minibatch_reassignment_ratio=self.minibatch_reassignment_ratio,
             cluster_id_prefix=None,
@@ -713,7 +704,6 @@ class OptunaKMeansObjective:
         return compute_clustering_score(
             gdf_w_clusters=gdf_w_clusters,
             weight_col=self.weight_col,
-            projected_epsg=self.projected_epsg,
             target_weight=self.target_weight,
             target_radius=self.target_radius,
             weight_importance_factor=self.weight_importance_factor,
@@ -723,7 +713,6 @@ class OptunaKMeansObjective:
 def compute_clustering_score(
     gdf_w_clusters: gpd.GeoDataFrame,
     weight_col: str,
-    projected_epsg: int,
     target_weight: Union[float, int],
     target_radius: Union[float, int],
     weight_importance_factor: Union[float, int] = 1,
@@ -738,7 +727,6 @@ def compute_clustering_score(
     )
 
     # get median cluster radius and weight
-    cluster_pivot_gdf = cluster_pivot_gdf.to_crs(epsg=projected_epsg)
     median_radius = cluster_pivot_gdf["geometry"].minimum_bounding_radius().median()
     median_weight = cluster_pivot_gdf["cluster_weight"].median()
 
@@ -756,16 +744,16 @@ def compute_clustering_score(
 def get_clusters(
     df: pd.DataFrame,
     n_clusters: int,
-    lat_col: str,
-    lon_col: str,
-    weight_col: str,
+    y_col: str,
+    x_col: str,
+    weight_col: Optional[str] = None,
     minibatch_reassignment_ratio: float = 0.05,
     cluster_id_prefix: Optional[str] = None,
 ) -> list:
     """Run KMeans and return list of cluster IDs. Optionally rename clusters."""
 
     # get data
-    X = df[[lon_col, lat_col]].values
+    X = df[[x_col, y_col]].values
     sample_weight = df[weight_col]
 
     # fit

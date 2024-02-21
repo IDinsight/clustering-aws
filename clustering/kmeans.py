@@ -677,7 +677,6 @@ class OptunaKMeansObjective:
         self.y_col = y_col
         self.x_col = x_col
         self.weight_col = weight_col
-        self.weight_importance_factor = weight_importance_factor
         self.target_weight = target_weight
         self.target_radius = target_radius
         self.weight_importance_factor = weight_importance_factor

@@ -167,13 +167,14 @@ class TunedClustering:
             )
             n_oversized = len(oversized_cluster_ids)
             print(f"{n_oversized} oversized clusters left after {i-1} passes.")
+            print(i, n_oversized_history)
 
             # stopping conditions
             if n_oversized == 0:
                 print("No more oversized clusters found. Stopping early.")
                 break
             elif (
-                i >= 3
+                i >= 4
                 and n_oversized == n_oversized_history[-1] == n_oversized_history[-2]
             ):
                 print(

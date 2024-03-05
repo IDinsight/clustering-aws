@@ -167,7 +167,6 @@ class TunedClustering:
             )
             n_oversized = len(oversized_cluster_ids)
             print(f"{n_oversized} oversized clusters left after {i-1} passes.")
-            print(i, n_oversized_history)
 
             # stopping conditions
             if n_oversized == 0:

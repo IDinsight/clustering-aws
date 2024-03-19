@@ -51,59 +51,6 @@ def pivot_by_cluster(
     return cluster_pivot_gdf
 
 
-def pivot_by_cluster_w_stats(
-    gdf_w_clusters: gpd.GeoDataFrame,
-    cluster_id_col: str,
-    weight_col: str,
-    epsg: int,
-    cols_to_keep: list[str] = [],
-) -> gpd.GeoDataFrame:
-    """
-    Adds additional statistics to the cluster_pivot_gdf.
-
-    Parameters
-    ----------
-    gdf_w_clusters : dataframe containing GPS coordinates, point IDs and weights.
-    cluster_id_col : name of the column containing the cluster IDs for grouping
-    weight_col : name of the column containing the weights each point
-        (e.g. population).
-    cols_to_keep : list of other columns to keep in the pivot table.
-    epsg : EPSG code for the projected coordinate reference system to use for
-        calculating the radius of the clusters. Find the appropriate EPSG code
-        for your region from https://epsg.io/.
-
-    Returns
-    -------
-    cluster_pivot_gdf : geodataframe containing GPS coordinates, grid IDs, weights,
-        and additional statistics, pivoted by cluster_id.
-    """
-
-    cluster_pivot_gdf = pivot_by_cluster(
-        gdf_w_clusters=gdf_w_clusters,
-        cluster_id_col=cluster_id_col,
-        weight_col=weight_col,
-        cols_to_keep=cols_to_keep,
-    )
-
-    # get latlon of cluster centroids
-    cluster_pivot_gdf["Lat_cluster_centroid"] = cluster_pivot_gdf.geometry.apply(
-        lambda row: row.centroid.y
-    )
-    cluster_pivot_gdf["Lon_cluster_centroid"] = cluster_pivot_gdf.geometry.apply(
-        lambda row: row.centroid.x
-    )
-    # switch to projected CRS for radius and area
-    cluster_pivot_gdf_projected = cluster_pivot_gdf.to_crs(epsg=epsg)
-    cluster_pivot_gdf["minimum_bounding_radius"] = cluster_pivot_gdf_projected[
-        "geometry"
-    ].minimum_bounding_radius()
-    cluster_pivot_gdf["area_km^2"] = (
-        cluster_pivot_gdf_projected["geometry"].area / 10**6
-    )
-
-    return cluster_pivot_gdf
-
-
 def create_ids(size: int, prefix: str) -> list[str]:
     """
     Create a list of string IDs in the format "ID_001".

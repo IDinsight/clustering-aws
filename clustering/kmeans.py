@@ -173,7 +173,7 @@ class TunedClustering:
                 print("No more oversized clusters found. Stopping early.")
                 break
             elif (
-                i >= 3
+                i >= 4
                 and n_oversized == n_oversized_history[-1] == n_oversized_history[-2]
             ):
                 print(
@@ -677,7 +677,6 @@ class OptunaKMeansObjective:
         self.y_col = y_col
         self.x_col = x_col
         self.weight_col = weight_col
-        self.weight_importance_factor = weight_importance_factor
         self.target_weight = target_weight
         self.target_radius = target_radius
         self.weight_importance_factor = weight_importance_factor

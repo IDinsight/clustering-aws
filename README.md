@@ -2,10 +2,17 @@
 
 This repo holds the code for:
 
-- Our latest optimised-k-means clustering algorithm
+- Our latest objective-finetuned KMeans clustering algorithm.
 - Running clustering on parallel AWS Lambdas
 
-## AWS Architecture
+## The Algorithm
+
+- See `demo/demo.ipynb` for a demo.
+- You can install this repo into any environment with `pip install .` and use the function in your own Python code with `from clustering import TunedClustering`.
+
+## AWS
+
+### AWS Architecture
 
 <p align="center">
 <img src="./aws_diagram.png" alt="AWS Architecture" width=700/>
@@ -46,31 +53,31 @@ Components:
     - Saves clustered file to the output bucket
   - ⚠️ Note: Clustering parameters are currently hardcoded into `aws/app.py`
 
-## Clustering Lambda Setup
+### Clustering Lambda Setup
 
-### Docker
+#### Docker
 
-#### Build the image
+##### Build the image
 
 ⚠️ Note: Clustering parameters are currently hardcoded into `aws/app.py`. You have to rebuild the image every time you want to change these.
 
     docker build -t clustering:<VERSION> .
 
-#### Note regarding the Dockerfile
+##### Note regarding the Dockerfile
 
 Our Dockerfile is built on a `miniconda` python image because we need to use `conda` to install geopandas since `pip` was failing (due to issues installing the GDAL dependency).
 
 Since we're not using an official AWS Lambda python image, we have to add the "Lambda Runtime Interface Client" so Lambdas can use our image. See these [AWS docs](https://docs.aws.amazon.com/lambda/latest/dg/python-image.html#python-image-clients) for more details.
 
-### (Optional) Test locally
+#### (Optional) Test locally
 
-#### Prepare for emulating Lambdas locally
+##### Prepare for emulating Lambdas locally
 
     mkdir -p ~/.aws-lambda-rie && \
     curl -Lo ~/.aws-lambda-rie/aws-lambda-rie https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie && \
     chmod +x ~/.aws-lambda-rie/aws-lambda-rie
 
-#### Run the container locally
+##### Run the container locally
 
     docker run --env-file .env -d \
     -v ~/.aws-lambda-rie:/aws-lambda -p 9000:8080 \
@@ -84,18 +91,18 @@ Otherwise, set the following in a `.env` file in root:
     AWS_ACCESS_KEY_ID=
     AWS_SECRET_ACCESS_KEY=
 
-#### Test locally
+##### Test locally
 
     curl "http://localhost:9000/2015-03-31/functions/function/invocations" \
     -d '{"filename":"<FILENAME>", "input_bucket":"<INPUT_BUCKET_NAME>",  "output_bucket":"<OUTPUT_BUCKET_NAME>"}'
 
-### Push Docker image to ECR
+#### Push Docker image to ECR
 
-#### Tag the image
+##### Tag the image
 
     docker tag clustering:<VERSION> <ECR_REPO_URL>/clustering:<VERSION>
 
-#### Login
+##### Login
 
     aws ecr get-login-password --region <AWS-REGION> --profile <YOUR-AWS-PROFILE> | docker login --username AWS --password-stdin <ECR_REPO_URL>
 
@@ -105,11 +112,11 @@ Push to ECR with:
 
     docker push <ECR_REPO_URL>/clustering:<VERSION>
 
-### Create Lambda
+#### Create Lambda
 
 Create a Lambda function from Docker image, select correct image and load. Test it with a suitable payload (see testing locally above).
 
-## Clustering Lambda Performance
+### Clustering Lambda Performance
 
 Example stats:
 
@@ -129,11 +136,4 @@ Based on this, I set the memory to 1024MB and timeout to 5mins.
   - The kickoff Lambda function definition. See `aws/kickoff_lambda.py`.
   - The Step Function inside Parallel Process's Payload editor. Also see `aws/state_machine.asl.json`
 
-## To do
-
-- Major: Currently all clustering parameters are ***hardcoded*** into `app.py`, meaning that we have to recreate the Docker image and upload to the Clustering Lambda every time we want to change them.
-  - Change the architecture such that parameters are handled by endpoints.
-- Move all clustering-related code here and keep `gridsample` for data processing and pipeline code.
-- Move docs to `mkdocs`
-
-Contact: Amir Emami (@amiraliemami)
+Contact: Amir Emami (@amiraliemami - amir.emami@IDinsight.org)

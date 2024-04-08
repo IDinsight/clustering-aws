@@ -163,10 +163,12 @@ class TunedClustering:
         n_oversized_history = []
         for i in range(2, self.max_passes + 1):
             oversized_cluster_ids = self._get_oversized_clusters(
-                gdf_w_clusters=projected_gdf_w_clusters, cutoff_weight=self.max_cluster_weight
+                gdf_w_clusters=projected_gdf_w_clusters,
+                cutoff_weight=self.max_cluster_weight,
+                previous_pass=i-1,
             )
             n_oversized = len(oversized_cluster_ids)
-            print(f"{n_oversized} oversized clusters left after {i-1} passes.")
+            print(f"{n_oversized} oversized clusters left after {i-1} passes to attempt.")
 
             # stopping conditions
             if n_oversized == 0:
@@ -184,10 +186,6 @@ class TunedClustering:
             # continue if not stopping
             else:
                 n_oversized_history.append(n_oversized)
-                projected_gdf_w_clusters.loc[
-                    projected_gdf_w_clusters["cluster_id"].isin(oversized_cluster_ids),
-                    "cluster_pass",
-                ] = i
 
                 # run recluster
                 recluster = ReCluster(
@@ -202,7 +200,7 @@ class TunedClustering:
                     max_trials=self.subsequent_max_trials,
                     n_jobs=self.n_jobs,
                     show_progress_bar=self.show_progress_bar,
-                    progress_bar_desc=f"Pass {i} ({n_oversized} oversized clusters)",
+                    progress_bar_desc=f"Pass {i} ({n_oversized} oversized clusters unattempted)",
                 )
                 projected_gdf_w_clusters = recluster.run(
                     oversized_cluster_ids=oversized_cluster_ids
@@ -215,6 +213,9 @@ class TunedClustering:
             right_index=True,
         )
 
+        # sort
+        gdf_w_clusters = gdf_w_clusters.sort_values(by="cluster_id")
+
         if return_type == "geodataframe":
             return gdf_w_clusters
         elif return_type == "list":
@@ -226,16 +227,18 @@ class TunedClustering:
         self,
         gdf_w_clusters: Union[gpd.GeoDataFrame, pd.DataFrame],
         cutoff_weight: Union[float, int],
+        previous_pass: int,
     ) -> list[str]:
         """Get list of IDs of clusters that are oversized."""
 
         unique_clusters_df = (
-            gdf_w_clusters[["cluster_id", "cluster_weight"]]
+            gdf_w_clusters[["cluster_id", "cluster_weight", "cluster_pass"]]
             .drop_duplicates(subset="cluster_id")
             .copy()
         )
         oversized_clusters_df = unique_clusters_df[
-            unique_clusters_df["cluster_weight"] > cutoff_weight
+            (unique_clusters_df["cluster_weight"] > cutoff_weight)
+            & (unique_clusters_df["cluster_pass"] == previous_pass)
         ]
         oversized_cluster_ids = oversized_clusters_df["cluster_id"].tolist()
 
@@ -484,6 +487,14 @@ class SingleReCluster:
             n_jobs=self.n_jobs,
             show_progress_bar=False,
         )
+
+        # if it was clustered into multiple subclusters, increment cluster_pass
+        if len(oversized_cluster_gdf["cluster_id"].unique()) > 1:
+            oversized_cluster_gdf.loc[:, "cluster_pass"] += 1
+        else:
+            # otherwise, don't change cluster_pass and remove the subcluster number
+            oversized_cluster_gdf.loc[:, "cluster_id"] = cluster_id
+
         return oversized_cluster_gdf
 
 

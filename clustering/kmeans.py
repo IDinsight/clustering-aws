@@ -1,5 +1,6 @@
+import logging
 from multiprocessing import Pool
-from typing import Optional, Union, Literal
+from typing import Literal, Optional, Union
 
 import geopandas as gpd
 import optuna
@@ -168,17 +169,17 @@ class TunedClustering:
                 previous_pass=i-1,
             )
             n_oversized = len(oversized_cluster_ids)
-            print(f"{n_oversized} oversized clusters left after {i-1} passes to attempt.")
+            logging.info(f"{n_oversized} oversized clusters left after {i-1} passes to attempt.")
 
             # stopping conditions
             if n_oversized == 0:
-                print("No more oversized clusters found. Stopping early.")
+                logging.info("No more oversized clusters found. Stopping early.")
                 break
             elif (
                 i >= 4
                 and n_oversized == n_oversized_history[-1] == n_oversized_history[-2]
             ):
-                print(
+                logging.info(
                     f"Number of oversized clusters {n_oversized} has not changed "
                     f"compared to the previous 2 runs. Stopping early."
                 )
@@ -524,7 +525,7 @@ def get_optimised_clusters(
 
     # check in case all weights are zero (avoid sparse matrix error in KMeans)
     if gdf[weight_col].sum() == 0:
-        print("All weights are zero. Tagging everything with CLUSTER_0 and 0.0 weight.")
+        logging.info("All weights are zero. Tagging everything with CLUSTER_0 and 0.0 weight.")
         gdf_w_clusters = gdf.copy()
         gdf_w_clusters.loc[:, "cluster_id"] = f"{cluster_id_prefix}0"
         gdf_w_clusters.loc[:, "cluster_weight"] = 0.0

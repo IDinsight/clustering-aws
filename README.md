@@ -1,17 +1,16 @@
 # Weight and Radius "Constrained" KMeans Clustering
 
-<div style="border: 2px solid #333; padding-inline: 15px; padding-top: 15px; margin-bottom: 20px; max-width: 700px; margin-left: auto; margin-right: auto;">
-  <div style="display: flex; justify-content: space-between;">
-    <div style="flex: 1; margin-right: 10px; text-align: center;">
-      <img src="example_grids.png" alt="Clustering visualization" style="max-width: 100%;">
-      <p><em>Clustering applied to population-weighted grids</em></p>
-    </div>
-    <div style="flex: 1; margin-left: 10px; text-align: center;">
-      <img src="example_rooftops.png" alt="Cluster metrics" style="max-width: 100%;">
-      <p><em>Clustering applied to building footprints</em></p>
-    </div>
-  </div>
-</div>
+<p align="center">
+  <img src="example_grids.png" alt="Clustering applied to population-weighted grids" width="48%" />
+  <img src="example_rooftops.png" alt="Clustering applied to building footprints" width="48%" />
+</p>
+<p align="center">
+  <em>Left: Clustering applied to population-weighted grids</em>
+  <em>|| Right: Clustering applied to building footprints</em>
+</p>
+
+
+
 
 This repo holds the code for:
 

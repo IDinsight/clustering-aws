@@ -1,4 +1,4 @@
-# Weight and Radius "Constrained" KMeans Clustering
+# Weight and Radius Objective-tuned KMeans Clustering
 
 <p align="center">
   <img src="example_grids.png" alt="Clustering applied to population-weighted grids" width="48%" />

@@ -1,16 +1,76 @@
-# Clustering + AWS Lambdas
+# Weight and Radius "Constrained" KMeans Clustering
+
+<div style="border: 2px solid #333; padding-inline: 15px; padding-top: 15px; margin-bottom: 20px; max-width: 700px; margin-left: auto; margin-right: auto;">
+  <div style="display: flex; justify-content: space-between;">
+    <div style="flex: 1; margin-right: 10px; text-align: center;">
+      <img src="example_grids.png" alt="Clustering visualization" style="max-width: 100%;">
+      <p><em>Clustering applied to population-weighted grids</em></p>
+    </div>
+    <div style="flex: 1; margin-left: 10px; text-align: center;">
+      <img src="example_rooftops.png" alt="Cluster metrics" style="max-width: 100%;">
+      <p><em>Clustering applied to building footprints</em></p>
+    </div>
+  </div>
+</div>
 
 This repo holds the code for:
 
-- Our latest objective-finetuned KMeans clustering algorithm.
-- Running clustering on parallel AWS Lambdas
+1. The Algorithm: Our latest objective-finetuned KMeans clustering algorithm that produces clusters with weights and radii close to desired values.
+2. Running on AWS: Running the clustering code on parallel AWS Lambdas
 
-## The Algorithm
+## 1. The Algorithm
 
-- See `demo/demo.ipynb` for a demo.
-- You can install this repo into any environment with `pip install .` and use the function in your own Python code with `from clustering import TunedClustering`.
+The algorithm is a customized K-means clustering approach that optimizes (using Grid-search) for both cluster **weight** and **radius**, with several key features:
 
-## AWS
+1. **Objective-Function Grid-search Optimization**. Uses `Optuna` to find the optimal number of clusters by minimizing an objective function that balances:
+   - Difference between actual and target cluster weights
+   - Difference between actual and target cluster radii
+
+    The following formula is used to score each clustering (lower is better):
+
+    $$\text{score} = (f_\text{weight bias} \cdot f_\text{balance}) \cdot |w_\text{target} - w_\text{median}| + |r_\text{target} - r_\text{median}|$$
+
+    Where:
+    - $f_\text{weight bias}$: weight importance factor. Above 1 gives penalises weight more, less than 1 penalises radius more.
+    - $f_\text{balance}$: Weight-radius balance factor to equalise scales between the two parameters. Equal to $\frac{r_\text{target}}{w_\text{target}}$.
+    - $r_\text{target}$: target radius
+    - $r_\text{median}$: median cluster radius
+    - $w_\text{target}$: target weight
+    - $w_\text{median}$: median cluster weight
+
+2. **Multi-pass Approach**. Can rerun repeatedly break up oversized clusters.
+   - Initial pass creates clusters based on target weight and radius
+   - Subsequent passes break up any oversized cluster that exceeds a specified weight threshold by rerunning the algorithm inside that cluster
+   - Process continues until no oversized clusters remain or until the maximum number of passes is reached
+
+3. **Parallelization**: Supports parallel processing for both:
+   - The Optuna Grid-search optimization process
+   - Re-clustering multiple oversized clusters simultaneously
+
+4. **Key Algorithm Steps**:
+   - Determine search space for optimal cluster count based on total weight and target weight
+   - Run Optuna study to find optimal number of clusters using Grid-search on Scikit-Learn's `MiniBatchKMeans`
+   - Apply clustering with the optimal cluster count
+   - Check for and re-cluster oversized clusters if necessary. This generates hierarchical cluster IDs to track the clustering history (e.g. `CLUSTER_001_01`)
+
+5. **Tunable Parameters**:
+   - `weight_importance_factor`: Controls the balance between optimizing for weight vs. radius
+   - `desired_cluster_weight`: Target weight for each cluster
+   - `desired_cluster_radius`: Target radius for each cluster
+   - `max_cluster_weight`: Maximum allowed weight before a cluster is considered oversized
+   - `max_passes`: Maximum number of re-clustering passes
+
+### Running the demo
+
+- You can install this repo into any environment with `pip install .`
+- Then run the notebook `demo/demo.ipynb`. Example datasets are provided for weighted grids and rooftop shapes.
+- You can use the main function in your own Python code by importing it like
+
+      from clustering import TunedClustering
+
+  and setting the appropriate parameters (see `demo.ipynb`)
+
+## 2. Running on AWS
 
 ### AWS Architecture
 
@@ -136,4 +196,4 @@ Based on this, I set the memory to 1024MB and timeout to 5mins.
   - The kickoff Lambda function definition. See `aws/kickoff_lambda.py`.
   - The Step Function inside Parallel Process's Payload editor. Also see `aws/state_machine.asl.json`
 
-Contact: Amir Emami (@amiraliemami - amir.emami@IDinsight.org)
+Contact: Amir Emami (@amiraliemami - <amir.emami@IDinsight.org>)

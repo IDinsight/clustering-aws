@@ -10,12 +10,13 @@
 </p>
 
 
+## Overview
+This repo contains code to group grids from a gridded population dataset into clusters for use in grid-based sampling. For a quick overview of grid-based sampling, see [Thomson et al (2020)](https://ij-healthgeographics.biomedcentral.com/articles/10.1186/s12942-020-00230-4) or the [gridsample](https://github.com/IDinsight/gridsample) package. When performing grid-based sampling, it is often desirable to first group grids into clusters and sample from clusters of grids rather than grids themselves since individiual grids are too sparsley populated to be useful as primary stage units (ibid). Grouping grids into clusters such that the resulting clusters a) are fully connected (i.e. clusters don’t contain grids that are not neighbors of any other grid in the cluster), b) have a total estimated population within a target range and c) have a geographic area below a certain threshold is technically challenging. The gridsample package contains a function for clustering grids based on a greedy algorithm but output from the function often failed to meet these technical requirements. The R package [gridSample](https://www.rdocumentation.org/packages/dismo/versions/1.3-16/topics/gridSample) (unrelated to the gridsample package) allows users to perform post-facto clustering through a process in which grids are first selected using stratified PPS sampling and then clusters are formed around the selected grids. This appproach meets the requirements listed above but since clusters are formed post-facto, prevents users from calculating true probabilities of PSU selection.
 
+This repo contains:
 
-This repo holds the code for:
-
-1. The Algorithm: Our latest objective-finetuned KMeans clustering algorithm that produces clusters with weights and radii close to desired values.
-2. Running on AWS: Running the clustering code on parallel AWS Lambdas
+1. Code which groups grids into clusters which meet the requirements listed above and 
+2. Code and instructions for running the above code on AWS in parallel using AWS Lambdas
 
 ## 1. The Algorithm
 
